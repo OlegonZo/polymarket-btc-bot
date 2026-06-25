@@ -12,7 +12,7 @@ This public version is sanitized. Full trading code, credentials, raw logs, wall
 
 After the resolver was fixed and the shadow dataset was recomputed:
 
-- **Directional hit rate was high but not high enough.** The clean resolved sample showed a `69.43%` winrate.
+- **Directional hit rate was high but not high enough.** The clean resolved shadow/counterfactual sample showed a `69.43%` row-level winrate.
 - **The average entry price was higher than the hit rate.** The average entry price was `70.38%`.
 - **Net edge was negative.** In a binary market, breakeven is approximately the entry price. The measured spread was:
 
@@ -26,12 +26,24 @@ Final clean sample:
 total rows: 1496
 resolved rows: 1485
 pending rows: 11
+unique resolved markets: 181
 resolver errors: 0
 average virtual PnL: -0.00956
 total virtual PnL: -14.20
 ```
 
-**Conclusion: not deployable.** The strategy is classified as negative-edge for the tested directional momentum hypothesis.
+**Population definition:** the 1485 rows are logged shadow/counterfactual entry observations from the candidate stream, mostly blocked by the filter stack. They are not real fills and should not be read as 1485 independent live trades.
+
+**Pseudo-replication note:** multiple rows can belong to the same 15-minute market, and each market resolves once. Outcome confidence should therefore be clustered closer to the 181 unique markets than the 1485 row count. The row-level EV accounting is still useful for measuring the logged opportunity stream, but it is not an iid binomial sample of 1485 independent outcomes.
+
+A simple market-clustered check also stayed negative:
+
+```text
+unique markets: 181
+mean per-market average PnL: -0.03848
+```
+
+**Conclusion: not deployable.** The logged directional opportunity stream did not beat the market-implied entry price, and no approved live-entry edge was validated.
 
 This is treated as a valid result, not a failure to be hidden. The purpose of the build was to determine whether the edge exists with enough rigor to defend the answer either way. The answer for this version is no.
 
@@ -48,7 +60,7 @@ The hypothesis under test was that BTC impulse moves can be detected early and c
 - avoid entering into local pumps and tops;
 - exit automatically when the market turns.
 
-The architecture below was built to give this hypothesis a fair test, and the tested version still came out negative.
+The architecture below was built to give this hypothesis a fair test, and the tested logged opportunity stream still came out negative.
 
 ## Multi-Layer Entry System
 
@@ -117,13 +129,19 @@ The attribution roadmap was:
 
 Scope discipline matters here. Once the corrected aggregate EV was negative, additional instrumentation became useful only for a bounded research question, not as a justification for endless optimization.
 
+## Priced-In Signal vs Overfitting
+
+The main result is a priced-in signal problem: the public momentum information was real enough to produce a high raw hit rate, but not strong enough to beat the price paid.
+
+The overfitting risk is a separate issue. It appears when small retrospective buckets make one filter look guilty, then the next sample flips and another filter becomes the new target. This repo treats that as data-snooping risk, not as evidence for another round of tuning.
+
 ## Tech Stack
 
 - **Language:** Python
 - **Data Sources:** Chainlink BTC/USD, Binance BTCUSDT, Polymarket order book
 - **Execution Venue:** Polymarket CLOB API
 - **Analytics:** Custom JSONL shadow logging, resolver, and attribution scripts
-- **Statistics:** Breakeven-by-entry-price EV accounting, bucket analysis, Wilson confidence intervals
+- **Statistics:** Breakeven-by-entry-price EV accounting, bucket analysis, cluster-aware sample-size caveats, Wilson confidence intervals for appropriately scoped buckets
 
 ## Status
 
