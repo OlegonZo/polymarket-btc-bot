@@ -69,6 +69,8 @@ Pseudo-replication caveat:
 
 The 1485 row count is not an iid outcome sample. The rows are clustered across 181 unique 15-minute markets, and each market resolves once. Effective outcome confidence is therefore closer to the unique-market count than the raw row count. A market-clustered check was still negative, with mean per-market average PnL of about -0.03848.
 
+Row-weighted and market-weighted means answer different questions. Row-level PnL is closer to fixed-size execution on every logged signal; market-level PnL is closer to an independent-market edge estimate. The gap between row-level -0.00956 and market-level -0.03848 suggests signal frequency was correlated with market outcome, but both weighting schemes remain negative.
+
 ## Why 69% Winrate Is Still Negative
 
 In a Polymarket binary market, buying at 0.70 means:
