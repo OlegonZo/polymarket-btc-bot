@@ -2,7 +2,7 @@
 
 ## One-line summary
 
-I built and shadow-tested a Polymarket BTC Up/Down 15-minute momentum bot, fixed the data-resolution pipeline, and rejected the strategy after the clean sample showed negative expected value.
+I built and shadow-tested a Polymarket BTC Up/Down 15-minute momentum bot, fixed the data-resolution pipeline, and rejected live deployment after the clean shadow/counterfactual sample showed negative expected value against the market-implied entry price.
 
 ## Context
 
@@ -55,8 +55,8 @@ Early analysis risked mixing unresolved or not-final markets into the result. Th
 The resolver was tightened to use final closed outcomes and produce a clean resolved dataset:
 
 ```text
-input: shadow_log.jsonl
-output: shadow_log_resolved_v3.jsonl
+input: logs/shadow_log.jsonl
+output: logs/shadow_log_resolved_v3.jsonl
 total rows: 1496
 resolved: 1485
 pending: 11
@@ -72,6 +72,7 @@ Clean resolved shadow sample:
 
 ```text
 resolved rows: 1485
+unique resolved markets: 181
 winrate: 69.43%
 average entry price: 70.38%
 average virtual PnL: -0.00956
@@ -88,6 +89,23 @@ The bot was directionally right often, but it paid too much for those entries.
 
 The market price already reflected the public momentum information better than the strategy did.
 
+## Population and independence
+
+The 1485 rows are logged shadow/counterfactual entry observations from the candidate stream, mostly blocked by the filter stack. They are not real fills and should not be described as 1485 independent live trades.
+
+There is also pseudo-replication in the row count. The observations are distributed across 181 unique 15-minute markets, and each market has one final outcome. Multiple observations inside the same market therefore share the same resolution.
+
+For outcome confidence, the effective sample size is closer to the number of unique markets than the raw row count. The row-level EV is still useful as decision-stream accounting, but Wilson-style precision should not be claimed as if all 1485 rows were iid.
+
+A simple market-clustered check was still negative:
+
+```text
+unique markets: 181
+mean per-market average PnL: -0.03848
+```
+
+This does not weaken the conclusion. It makes the uncertainty accounting explicit.
+
 ## Why the high winrate was not enough
 
 A 69% winrate sounds strong in isolation. In a priced binary market, it is incomplete.
@@ -99,7 +117,13 @@ If the bot buys UP at 0.70:
 
 The breakeven winrate is therefore roughly 70%.
 
-The strategy's realized hit rate was lower than its average entry price. That makes the system negative EV despite a high raw winrate.
+The logged candidate stream's realized hit rate was lower than its average entry price. That makes the tested opportunity stream negative EV despite a high raw winrate.
+
+## Priced-in signal vs overfitting
+
+The primary diagnosis is not overfitting. The primary diagnosis is priced-in public information: the momentum signal was directionally useful, but the Polymarket price already charged more than that signal was worth.
+
+Overfitting is the separate trap that appears after the main EV check fails.
 
 ## What almost caused overfitting
 
@@ -119,7 +143,7 @@ This is the classic tuning trap:
 4. Another filter becomes the new suspect.
 5. The strategy keeps consuming time while total EV stays near zero or negative.
 
-The decision was to stop tuning because the main EV equation had already failed.
+The decision was to stop tuning because the main EV equation had already failed. Changing filters after seeing small retrospective buckets would have turned the project from measurement into data-snooping.
 
 ## Exit logic
 
@@ -137,7 +161,7 @@ A valid future exit test would need a pre-defined rule and at least 30-50 comple
 
 ## Decision
 
-The strategy was closed as negative edge.
+The strategy was closed as not deployable from the tested evidence.
 
 Locked decisions:
 
