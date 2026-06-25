@@ -1,66 +1,138 @@
-# Polymarket BTC 15M Momentum Research
+# Polymarket BTC 15M Momentum Bot - Edge Measurement Framework
 
-Public research case for a Polymarket BTC Up/Down 15-minute momentum bot.
+An automated trading research system for the **BTC Up/Down 15-minute** prediction market on Polymarket, built primarily as an apparatus for measuring whether short-horizon BTC momentum retains edge after market-implied pricing.
 
-The full trading bot code, credentials, raw logs, and execution details are not published in this public repository. This repo is a sanitized portfolio version focused on methodology, data quality, and the final research conclusion.
+The headline result of this project is a **negative one**, and it is stated up front by design. The value of the repo is the measurement infrastructure and the discipline used to reach that conclusion, not a green PnL curve.
 
-## Status
+This public version is sanitized. Full trading code, credentials, raw logs, wallet details, and private execution parameters are not published.
 
-Closed as a negative-edge strategy.
+---
 
-The bot is not approved for live BUY execution.
+## Key Finding
 
-Final clean shadow result:
+After the resolver was fixed and the shadow dataset was recomputed:
+
+- **Directional hit rate was high but not high enough.** The clean resolved sample showed a `69.43%` winrate.
+- **The average entry price was higher than the hit rate.** The average entry price was `70.38%`.
+- **Net edge was negative.** In a binary market, breakeven is approximately the entry price. The measured spread was:
 
 ```text
+winrate 69.43% - average entry price 70.38% = -0.95% per share
+```
+
+Final clean sample:
+
+```text
+total rows: 1496
 resolved rows: 1485
-winrate: 69.43%
-average entry price: 70.38%
+pending rows: 11
+resolver errors: 0
 average virtual PnL: -0.00956
 total virtual PnL: -14.20
 ```
 
-Core result:
+**Conclusion: not deployable.** The strategy is classified as negative-edge for the tested directional momentum hypothesis.
+
+This is treated as a valid result, not a failure to be hidden. The purpose of the build was to determine whether the edge exists with enough rigor to defend the answer either way. The answer for this version is no.
+
+> Methodology note: the decisive conclusion is based on the corrected resolver output and the breakeven relationship between winrate and entry price. Small retrospective filter buckets were not used to move the goalposts toward a favorable read.
+
+---
+
+## Core Idea
+
+The hypothesis under test was that BTC impulse moves can be detected early and confirmed across data sources fast enough to enter the 15-minute market with positive net expectancy:
+
+- detect BTC impulse moves early;
+- confirm direction through a second exchange feed instead of trusting a single source;
+- avoid entering into local pumps and tops;
+- exit automatically when the market turns.
+
+The architecture below was built to give this hypothesis a fair test, and the tested version still came out negative.
+
+## Multi-Layer Entry System
+
+Entry decisions ran through a stacked filter pipeline, not a single signal:
+
+1. **Chainlink Signal** - primary BTC/USD price direction via `move_pct`
+2. **Binance Confirmation** - cross-checks direction using 5s/10s/30s moves, volume spikes, and acceleration
+3. **Entry Score V1** - rates each signal using Chainlink strength, multi-window moves, acceleration, volume spike, orderbook imbalance, spread, and entry price
+4. **Forecast Score 15M** - secondary forecast model, stricter on expensive entries
+5. **Binance Entry Quality Guard** - blocks weak confirmation entries
+6. **Cheap Entry Reversal Guard** - estimates reversal risk to avoid buying tops
+7. **Anti Fake Pump Filter** - blocks entries into local pumps
+8. **Orderbook Guards** - validate bid/ask depth, imbalance, spread, and fill context
+9. **Binance Armed Mode** - prioritizes signals during confirmed market acceleration
+10. **Fast Entry Window** - entries only allowed in a defined window after a new market opens
+
+## Exit System
+
+A dedicated exit monitor was implemented to test whether active exits could improve the strategy:
+
+- **Take Profit** - locks in gains
+- **Trailing Exit** - exits on pullback from a local high
+- **Predictive Exit** - early exit when conditions deteriorate
+- **Defensive / Hard Defensive Exit** - protective and emergency exits
+- **Binance Reversal Exit** - exits when the confirming feed turns against the position
+- **Ladder Sell** - scaled exit logic
+
+The exit sample was too small to rescue the strategy conclusion:
 
 ```text
-expected PnL per share = winrate - average entry price
-0.6943 - 0.7038 = -0.0095
+simulated exits: 4
+average exit PnL: -0.0529
+total exit PnL: -0.2117
 ```
 
-The bot was directionally right often, but not often enough for the prices it paid. The market-implied probability was stronger than the tested public momentum signal stack.
+The remaining exit question is bounded: it would require a pre-defined rule and a 30-50+ exit sample. It is not a reason to continue open-ended filter tuning.
 
-## What This Repository Contains
+## Shadow Logging & Analytics System
 
-- `PORTFOLIO_CASE.md` - full English case study
-- `PORTFOLIO_POST_RU.md` - shorter Russian write-up
-- `POSTMORTEM.md` - internal-style technical postmortem
-- `DECISION_LOCK.md` - explicit stop/tuning lock
+This is the part of the project I would point a reviewer to first.
 
-## What Is Not Published
+A custom analytics layer logged and evaluated blocked or hypothetical trades to measure whether the filter stack actually added edge rather than assuming it did:
 
-- private keys or API credentials
-- `.env` files
-- full live trading code
-- raw JSONL logs
-- wallet/account details
-- executable trading thresholds that are not needed for the public research conclusion
+- **Shadow Logger** - records blocked entries with full context and blocking filters
+- **Resolver** - replays logged signals against final market outcomes
+- **Analyzer** - surfaces which filters block most often and what the result would have been without them
 
-## Research Question
+### Resolver Bug - Found and Fixed
 
-Can short-term BTC momentum, confirmed across Chainlink, Binance, and Polymarket order-book context, produce positive expected value in 15-minute BTC Up/Down markets?
+During analysis, the resolver was found to be capable of misreading unresolved or not-final markets. The issue was isolated and corrected, then the affected results were recomputed.
 
-Answer from the tested sample: no.
+Catching and fixing errors in the measurement layer is part of the point: a strategy can only be trusted as far as the instrument that evaluates it.
 
-## Main Lesson
+### Independent Filter Attribution
 
-High winrate is not edge.
+The pipeline used short-circuit evaluation: the first failing filter stopped execution. That makes attribution difficult because later filters are not always evaluated independently.
 
-In priced binary markets, winrate only matters relative to the entry price. A 69% winrate can still be negative if the average entry price is above 69%.
+The attribution roadmap was:
 
-## Decision
+1. **Independent Filter Attribution** - evaluate every filter regardless of earlier failures
+2. **Resolver against real market outcomes**
+3. **Filter Impact Analysis**
+4. `simulate_remove(filter)` - estimate each filter's marginal contribution
+5. **Wilson Confidence Interval** for statistical significance
+6. **LOW_CONFIDENCE** flag when sample size is too small
 
-No live BUY.
+Scope discipline matters here. Once the corrected aggregate EV was negative, additional instrumentation became useful only for a bounded research question, not as a justification for endless optimization.
 
-No retrospective filter tuning.
+## Tech Stack
 
-The project is treated as a completed negative-edge research case unless a materially different hypothesis is defined before testing.
+- **Language:** Python
+- **Data Sources:** Chainlink BTC/USD, Binance BTCUSDT, Polymarket order book
+- **Execution Venue:** Polymarket CLOB API
+- **Analytics:** Custom JSONL shadow logging, resolver, and attribution scripts
+- **Statistics:** Breakeven-by-entry-price EV accounting, bucket analysis, Wilson confidence intervals
+
+## Status
+
+- **UP strategy:** forward/shadow measurement complete; classified negative-edge for the tested hypothesis
+- **DOWN variant:** experimental mirrored logic existed, but is not presented as a deployable result
+- **Analytics:** shadow logging + resolver fix + attribution foundation in place
+- **Remaining open angle:** exit-path simulation only, bounded and pre-defined
+- **Live BUY:** not approved
+
+---
+
+Strategy parameters, signal logic, credentials, raw logs, and execution details are kept private. Architecture, measurement methodology, and the reasoning behind the negative result are available for discussion in interviews.
