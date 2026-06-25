@@ -104,6 +104,8 @@ unique markets: 181
 mean per-market average PnL: -0.03848
 ```
 
+The row-weighted and market-weighted means answer different questions. Row-level PnL is closer to the economics of fixed-size trading on every logged signal, while market-level PnL is closer to an independent-market edge estimate. The gap between `-0.00956` and `-0.03848` means signal frequency was correlated with market outcome; frequently logged markets were less negative, so row-weighting pulled the result toward zero. Both views remain negative.
+
 This does not weaken the conclusion. It makes the uncertainty accounting explicit.
 
 ## Why the high winrate was not enough
