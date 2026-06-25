@@ -10,13 +10,11 @@ This bot is not approved for live BUY execution.
 The strategy is frozen. Do not tune entry filters, thresholds, guards, or exit logic based on the current shadow results.
 
 Allowed:
-
 - keep shadow collection running only if the goal is to finish the exit sample;
 - run resolver/analyzers for reporting;
 - use this project as a portfolio/research case.
 
 Not allowed:
-
 - enable real BUY;
 - loosen filters because a small bucket looks positive;
 - add more guards to chase recent losses;
@@ -41,10 +39,15 @@ Latest resolved shadow sample:
 - resolved: 1485
 - pending: 11
 - errors: 0
+- unique resolved markets: 181
 - winrate: 69.43%
 - average entry price: 70.38%
 - average virtual PnL: -0.00956
 - total virtual PnL: -14.20
+
+Population definition:
+
+The 1485 rows are logged shadow/counterfactual entry observations from the candidate stream, mostly blocked by the filter stack. They are not real fills and not 1485 independent live trades.
 
 Core formula:
 
@@ -58,9 +61,13 @@ Observed:
 0.6943 - 0.7038 = -0.0095
 ```
 
-The bot is correct often, but not often enough for the prices it pays.
+The logged candidate stream is correct often, but not often enough for the prices it would have paid.
 
 This is the main result. The market price already captures the public directional information better than this signal stack.
+
+Pseudo-replication caveat:
+
+The 1485 row count is not an iid outcome sample. The rows are clustered across 181 unique 15-minute markets, and each market resolves once. Effective outcome confidence is therefore closer to the unique-market count than the raw row count. A market-clustered check was still negative, with mean per-market average PnL of about -0.03848.
 
 ## Why 69% Winrate Is Still Negative
 
@@ -81,8 +88,8 @@ Before the resolver fix, unresolved or not-final markets could distort the analy
 
 Final resolver state:
 
-- input: `shadow_log.jsonl`
-- output: `shadow_log_resolved_v3.jsonl`
+- input: `logs/shadow_log.jsonl`
+- output: `logs/shadow_log_resolved_v3.jsonl`
 - resolved now: 1485
 - still pending: 11
 - errors: 0
@@ -96,9 +103,9 @@ The current filters should not be interpreted as optimization targets.
 
 Examples from the latest run:
 
-- `CHEAP_ENTRY_REVERSAL_GUARD_V1`: positive-looking blocked bucket, but small `n`
-- `FORECAST_SCORE_15M_BLOCK`: all-time and recent period conflict
-- `BINANCE_ENTRY_QUALITY_GUARD_V1`: all-time and recent period conflict
+- a cheap-entry reversal guard had a positive-looking blocked bucket, but small `n`
+- a forecast-style block had conflicting all-time and recent-period behavior
+- a Binance-quality guard had conflicting all-time and recent-period behavior
 
 This is not a signal to tune filters. It is the overfit loop:
 
@@ -135,7 +142,7 @@ No strategy changes should be made before that sample exists.
 
 ## Final Engineering Conclusion
 
-The directional entry edge is not present in the tested data.
+The logged directional opportunity stream did not show positive EV after market-implied entry price.
 
 The bot should not be improved by more filter work. The project should be treated as a completed negative-edge research case unless a materially different hypothesis is introduced.
 
