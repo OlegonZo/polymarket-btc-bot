@@ -8,7 +8,7 @@ Do not enable live BUY for this bot.
 
 Do not tune filters in this strategy.
 
-The tested directional edge is negative:
+The logged directional opportunity stream is negative:
 
 ```text
 winrate 69.43% - avg_entry 70.38% = -0.95% per share
@@ -26,9 +26,9 @@ This is the controlling fact.
 ## Blocked Work
 
 - changing thresholds because a small bucket looks good;
-- weakening `CHEAP_ENTRY_REVERSAL_GUARD_V1`;
-- changing `FORECAST_SCORE_15M_BLOCK` from recent small samples;
-- changing `BINANCE_ENTRY_QUALITY_GUARD_V1` from recent small samples;
+- weakening cheap-entry reversal logic from a small positive-looking blocked bucket;
+- changing forecast-style blocks from recent small samples;
+- changing Binance-quality guards from recent small samples;
 - enabling real BUY;
 - calling more log growth "progress" unless it tests a pre-defined question.
 
