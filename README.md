@@ -51,6 +51,17 @@ This is treated as a valid result, not a failure to be hidden. The purpose of th
 
 > Methodology note: the decisive conclusion is based on the corrected resolver output and the breakeven relationship between winrate and entry price. Small retrospective filter buckets were not used to move the goalposts toward a favorable read.
 
+## Reproduce the aggregate check
+
+The public repository now includes a small Python utility that validates the sanitized aggregate summary and recomputes the headline edge and average virtual PnL:
+
+```bash
+python aggregate_analysis.py data/summary.json
+python -m unittest discover -s tests -v
+```
+
+This is deliberately **not** presented as a replacement for the private raw dataset or full resolver. It only makes the published aggregate arithmetic runnable and testable.
+
 ---
 
 ## Core Idea
