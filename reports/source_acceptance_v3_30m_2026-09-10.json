@@ -1,0 +1,299 @@
+{
+  "mode": "pre_cohort_source_acceptance_no_orders_no_pnl",
+  "started_ts": 1789021616.684616,
+  "completed_ts": 1789023417.0396388,
+  "fee_schedule": {
+    "passed": true,
+    "market_id": "4401208",
+    "market_slug": "btc-updown-15m-1789020900",
+    "fees_enabled": true,
+    "fee_schedule": {
+      "rate": "0.07",
+      "exponent": 1,
+      "taker_only": true
+    },
+    "raw_fee_fields": {
+      "feesEnabled": true,
+      "feeSchedule": {
+        "exponent": 1,
+        "rate": 0.07,
+        "takerOnly": true,
+        "rebateRate": 0.2
+      }
+    },
+    "request_ms": 294.5600000093691
+  },
+  "endpoint_probes": {
+    "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms": {
+      "started_ts": 1789021596.3125865,
+      "duration_seconds": 10.0,
+      "sample_attempts": 100,
+      "valid_attempt_fraction": 0.0,
+      "max_without_valid_quote_seconds": 10.0,
+      "quote_age_upper_bound_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "reconnect_requested": false,
+      "reconnect_recovered": false,
+      "clock_sync": {},
+      "quote_samples": 0,
+      "quote_age_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "distinct_update_ids": 0,
+      "update_ids_monotonic": true,
+      "unavailable": {
+        "ws_no_quote": 100
+      },
+      "error_examples": {
+        "ws_no_quote": "Binance WebSocket has not produced a synchronized quote"
+      },
+      "rejected_quote_clock": {},
+      "diagnostics": {
+        "ws_disconnect": 5,
+        "ws_reconnect_exhausted": 1
+      },
+      "gaps_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "passed": false
+    },
+    "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms": {
+      "started_ts": 1789021606.3106377,
+      "duration_seconds": 10.0,
+      "sample_attempts": 100,
+      "valid_attempt_fraction": 0.52,
+      "max_without_valid_quote_seconds": 4.8439999999973224,
+      "quote_age_upper_bound_ms": {
+        "n": 52,
+        "p50": 367.0224069899414,
+        "p95": 377.92671912373044,
+        "max": 379.94064086140133
+      },
+      "reconnect_requested": false,
+      "reconnect_recovered": false,
+      "clock_sync": {
+        "transport": "https_preconnected_request",
+        "endpoint": "https://data-api.binance.vision/api/v3/time",
+        "setup_ms": 0.0,
+        "request_rtt_ms": 297.3119000089355,
+        "uncertainty_ms": 149.65595000446774,
+        "offset_ms": 325.8976936340332,
+        "sample_count": 3,
+        "selected_at": 1789021609.309536
+      },
+      "quote_samples": 52,
+      "quote_age_ms": {
+        "n": 52,
+        "p50": 217.36645698547363,
+        "p95": 228.2707691192627,
+        "max": 230.2846908569336
+      },
+      "distinct_update_ids": 52,
+      "update_ids_monotonic": true,
+      "unavailable": {
+        "ws_no_quote": 48
+      },
+      "error_examples": {
+        "ws_no_quote": "Binance WebSocket has not produced a synchronized quote"
+      },
+      "rejected_quote_clock": {},
+      "diagnostics": {},
+      "gaps_ms": {
+        "n": 1,
+        "p50": 4757.860898971558,
+        "p95": 4757.860898971558,
+        "max": 4757.860898971558
+      },
+      "passed": true
+    }
+  },
+  "usable_endpoints": [
+    "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms"
+  ],
+  "failover_observation": {
+    "started_ts": 1789021616.684616,
+    "duration_seconds": 1800.0,
+    "sample_attempts": 7184,
+    "valid_attempt_fraction": 0.9665924276169265,
+    "max_without_valid_quote_seconds": 23.531000000002678,
+    "quote_age_upper_bound_ms": {
+      "n": 6944,
+      "p50": 353.07988040929195,
+      "p95": 428.12260501866695,
+      "max": 739.4353909583297
+    },
+    "reconnect_requested": true,
+    "reconnect_recovered": true,
+    "clock_sync": {
+      "transport": "https_preconnected_request",
+      "endpoint": "https://data-api.binance.vision/api/v3/time",
+      "setup_ms": 0.0,
+      "request_rtt_ms": 326.28370000747964,
+      "uncertainty_ms": 164.14185000373982,
+      "offset_ms": 354.9811840057373,
+      "sample_count": 3,
+      "selected_at": 1789023278.753581
+    },
+    "quote_samples": 6944,
+    "quote_age_ms": {
+      "n": 6944,
+      "p50": 205.79814910888672,
+      "p95": 280.56812286376953,
+      "max": 575.2935409545898
+    },
+    "distinct_update_ids": 6929,
+    "update_ids_monotonic": true,
+    "unavailable": {
+      "ws_no_quote": 24,
+      "ws_stale_quote": 70,
+      "ws_disconnect": 146
+    },
+    "error_examples": {
+      "ws_no_quote": "Binance WebSocket has not produced a synchronized quote",
+      "ws_stale_quote": "Binance quote age upper bound 817.584ms exceeds 750.000ms",
+      "ws_disconnect": "Binance WebSocket is disconnected; cached quote is invalid"
+    },
+    "rejected_quote_clock": {
+      "age_ms": {
+        "n": 216,
+        "p50": 6470.564603805542,
+        "p95": 21246.172428131104,
+        "max": 23752.614736557007
+      },
+      "uncertainty_ms": {
+        "n": 216,
+        "p50": 148.24854999803938,
+        "p95": 148.4487000014051,
+        "max": 164.14185000373982
+      },
+      "age_upper_bound_ms": {
+        "n": 216,
+        "p50": 6619.013303806947,
+        "p95": 21394.62112813251,
+        "max": 23901.063436558412
+      },
+      "clock_offset_ms": {
+        "n": 216,
+        "p50": 343.7316417694092,
+        "p95": 343.7316417694092,
+        "max": 354.9811840057373
+      }
+    },
+    "diagnostics": {
+      "ws_disconnect": 6,
+      "ws_receive_timeout": 1
+    },
+    "gaps_ms": {
+      "n": 5,
+      "p50": 6405.78293800354,
+      "p95": 15618.990421295166,
+      "max": 15618.990421295166
+    },
+    "events": [
+      {
+        "ts": 1789021617.6563914,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketBadStatusException('Handshake status 451 None -+-+- {\\'server\\': \\'awselb/2.0\\', \\'date\\': \\'Thu, 10 Sep 2026 06:26:57 GMT\\', \\'content-length\\': \\'224\\', \\'connection\\': \\'keep-alive\\', \\'content-type\\': \\'application/json\\'} -+-+- {\\n  \"code\": 0,\\n  \"msg\": \"Service unavailable from a restricted location according to \\'b. Eligibility\\' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error.\"\\n}')"
+      },
+      {
+        "ts": 1789021617.6563914,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      },
+      {
+        "ts": 1789022395.8484066,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketConnectionClosedException('Connection to remote host was lost.')"
+      },
+      {
+        "ts": 1789022395.8484066,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      },
+      {
+        "ts": 1789022405.0091405,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketBadStatusException('Handshake status 451 None -+-+- {\\'server\\': \\'awselb/2.0\\', \\'date\\': \\'Thu, 10 Sep 2026 06:40:04 GMT\\', \\'content-length\\': \\'224\\', \\'connection\\': \\'keep-alive\\', \\'content-type\\': \\'application/json\\'} -+-+- {\\n  \"code\": 0,\\n  \"msg\": \"Service unavailable from a restricted location according to \\'b. Eligibility\\' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error.\"\\n}')"
+      },
+      {
+        "ts": 1789022405.0091405,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      },
+      {
+        "ts": 1789022517.1911645,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:Binance WebSocket closed without a message"
+      },
+      {
+        "ts": 1789022517.1911645,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      },
+      {
+        "ts": 1789022518.4086967,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketBadStatusException('Handshake status 451 None -+-+- {\\'server\\': \\'awselb/2.0\\', \\'date\\': \\'Thu, 10 Sep 2026 06:41:57 GMT\\', \\'content-length\\': \\'224\\', \\'connection\\': \\'keep-alive\\', \\'content-type\\': \\'application/json\\'} -+-+- {\\n  \"code\": 0,\\n  \"msg\": \"Service unavailable from a restricted location according to \\'b. Eligibility\\' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error.\"\\n}')"
+      },
+      {
+        "ts": 1789022518.4086967,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      },
+      {
+        "ts": 1789023265.007678,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_receive_timeout:WebSocketTimeoutException('Connection timed out')"
+      },
+      {
+        "ts": 1789023265.007678,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_receive_timeout"
+      },
+      {
+        "ts": 1789023274.244414,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketBadStatusException('Handshake status 451 None -+-+- {\\'server\\': \\'awselb/2.0\\', \\'date\\': \\'Thu, 10 Sep 2026 06:54:33 GMT\\', \\'content-length\\': \\'224\\', \\'connection\\': \\'keep-alive\\', \\'content-type\\': \\'application/json\\'} -+-+- {\\n  \"code\": 0,\\n  \"msg\": \"Service unavailable from a restricted location according to \\'b. Eligibility\\' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error.\"\\n}')"
+      },
+      {
+        "ts": 1789023274.244414,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      }
+    ]
+  },
+  "quality_policy": "source_acceptance_v2_engineering_only",
+  "criteria": {
+    "minimum_1800_seconds": true,
+    "at_least_95pct_valid_attempts": true,
+    "maximum_10_seconds_without_valid_quote": false,
+    "multiple_updates": true,
+    "monotonic_updates": true,
+    "injected_disconnect_recovered": true
+  },
+  "passed": false
+}

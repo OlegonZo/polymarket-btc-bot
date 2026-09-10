@@ -1,0 +1,120 @@
+{
+  "mode": "pre_cohort_source_acceptance_no_orders_no_pnl",
+  "started_ts": 1788993692.552176,
+  "completed_ts": 1788995493.0961552,
+  "fee_schedule": {
+    "passed": true,
+    "market_id": "4390428",
+    "market_slug": "btc-updown-15m-1788993000",
+    "fees_enabled": true,
+    "fee_schedule": {
+      "rate": "0.07",
+      "exponent": 1,
+      "taker_only": true
+    },
+    "raw_fee_fields": {
+      "feesEnabled": true,
+      "feeSchedule": {
+        "exponent": 1,
+        "rate": 0.07,
+        "takerOnly": true,
+        "rebateRate": 0.2
+      }
+    },
+    "request_ms": 192.4589000045671
+  },
+  "endpoint_probes": {
+    "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms": {
+      "duration_seconds": 15.065690755844116,
+      "quote_samples": 0,
+      "quote_age_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "distinct_update_ids": 0,
+      "update_ids_monotonic": true,
+      "unavailable": {
+        "ws_no_quote": 150
+      },
+      "diagnostics": {
+        "ws_disconnect": 6,
+        "ws_reconnect_exhausted": 2
+      },
+      "gaps_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "passed": false
+    },
+    "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms": {
+      "duration_seconds": 15.503288507461548,
+      "quote_samples": 84,
+      "quote_age_ms": {
+        "n": 84,
+        "p50": 596.6141223907471,
+        "p95": 673.494815826416,
+        "max": 682.410717010498
+      },
+      "distinct_update_ids": 82,
+      "update_ids_monotonic": true,
+      "unavailable": {
+        "ws_no_quote": 66
+      },
+      "diagnostics": {},
+      "gaps_ms": {
+        "n": 1,
+        "p50": 6579.403638839722,
+        "p95": 6579.403638839722,
+        "max": 6579.403638839722
+      },
+      "passed": true
+    }
+  },
+  "usable_endpoints": [
+    "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms"
+  ],
+  "failover_observation": {
+    "duration_seconds": 1800.5439791679382,
+    "quote_samples": 7062,
+    "quote_age_ms": {
+      "n": 7062,
+      "p50": 644.3042755126953,
+      "p95": 695.002555847168,
+      "max": 749.1230964660645
+    },
+    "distinct_update_ids": 7062,
+    "update_ids_monotonic": true,
+    "unavailable": {
+      "ws_no_quote": 31,
+      "ws_stale_quote": 93
+    },
+    "diagnostics": {
+      "ws_disconnect": 1
+    },
+    "gaps_ms": {
+      "n": 1,
+      "p50": 7762.640476226807,
+      "p95": 7762.640476226807,
+      "max": 7762.640476226807
+    },
+    "events": [
+      {
+        "ts": 1788993693.516433,
+        "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+        "event": "disconnect",
+        "reason": "ws_disconnect:WebSocketBadStatusException('Handshake status 451 None -+-+- {\\'server\\': \\'awselb/2.0\\', \\'date\\': \\'Wed, 09 Sep 2026 22:41:31 GMT\\', \\'content-length\\': \\'224\\', \\'connection\\': \\'keep-alive\\', \\'content-type\\': \\'application/json\\'} -+-+- {\\n  \"code\": 0,\\n  \"msg\": \"Service unavailable from a restricted location according to \\'b. Eligibility\\' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error.\"\\n}')"
+      },
+      {
+        "ts": 1788993693.5173573,
+        "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+        "event": "endpoint_switch",
+        "reason": "ws_disconnect"
+      }
+    ]
+  },
+  "passed": true
+}

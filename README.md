@@ -62,6 +62,62 @@ python -m unittest discover -s tests -v
 
 This is deliberately **not** presented as a replacement for the private raw dataset or full resolver. It only makes the published aggregate arithmetic runnable and testable.
 
+## Approved telemetry-only calibration
+
+`telemetry.py` is a separate, no-trade, no-outcome collector for the approved
+14-day calibration phase of the draft microstructure-reversion study. It stores
+public CLOB top-of-book inputs, a locally synchronized Binance BTCUSDT
+diff-depth midpoint, source event timestamps, and raw feature frequency in a
+separate SQLite file; it has no wallet, order, resolver, outcome, or PnL logic.
+
+Install the WebSocket dependency first:
+
+```bash
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+```bash
+python telemetry.py run --db data/telemetry.sqlite3 --duration-days 14
+python telemetry.py report --db data/telemetry.sqlite3
+python -m unittest discover -s tests -v
+```
+
+Binance uses `btcusdt@depth@100ms`, synchronized to a REST depth snapshot by
+update ID. Its event field `E` is the source timestamp. A disconnected,
+sequence-broken, or older-than-750ms cached quote is rejected and classified;
+it is never carried forward as a valid observation.
+
+Do not begin a strategy cohort from these data. The telemetry report is only
+for selecting and approving one fixed configuration before a fresh cohort.
+
+The prepared future cohort implementation lives in
+[SHADOW_COHORT_PREPARATION.md](SHADOW_COHORT_PREPARATION.md). It is not wired
+into the active collector, creates no cohort automatically, and has no order
+submission path. It requires a separate written approval and a new complete
+live-time snapshot before it may be used.
+
+[shadow_runtime.py](shadow_runtime.py) now provides the tested source-to-store
+adapter for that future cohort. It fetches the raw Gamma market object and both
+full CLOB books, reads the synchronized Binance quote, records every attempt as
+a heartbeat, and passes only directional candidates into the immutable shadow
+store. It has no command-line launch path: creation and start of a cohort still
+require the separate written approval described above.
+
+The current telemetry network evidence and the pre-next-run repair plan are in
+[TELEMETRY_INCIDENT_2026-09-07.md](TELEMETRY_INCIDENT_2026-09-07.md).
+
+For offline checks of all eight draft filters, including the entry-time
+window, use `decision_audit.py`. It requires only Python's standard library,
+opens telemetry SQLite read-only and reports conditional candidates plus
+UNKNOWN historical market integrity; these counts are not verified trades.
+See [BOT_LEARNING.md](BOT_LEARNING.md) for corrections to earlier statistics,
+known measurement limitations, and the future model-evaluation protocol.
+
+```powershell
+.\.venv\Scripts\python.exe decision_audit.py --db data/telemetry_calibration.sqlite3 --run-id aee5c46a-b1a5-47ba-8eec-fef8ecc70e93
+```
+
 ---
 
 ## Core Idea

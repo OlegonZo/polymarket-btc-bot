@@ -1,0 +1,1 @@
+SELECT day_utc, COUNT(*) AS snapshots, SUM(CASE WHEN ABS(up_delta_10s)>=.04 OR ABS(down_delta_10s)>=.04 THEN 1 ELSE 0 END) AS shock_rows FROM telemetry_snapshots WHERE run_id='aee5c46a-b1a5-47ba-8eec-fef8ecc70e93' GROUP BY day_utc ORDER BY day_utc;

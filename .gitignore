@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+tests/__pycache__/
+data/*.sqlite3
+data/*.log
+reports/*.log
+reports/*.progress.json

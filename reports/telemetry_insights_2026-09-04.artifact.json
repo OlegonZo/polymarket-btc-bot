@@ -1,0 +1,208 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Telemetry: условия часты, но edge ещё не доказан",
+    "description": "Промежуточный срез 14-дневной telemetry-only калибровки BTC 15-minute Polymarket стратегии.",
+    "generatedAt": "2026-09-04T00:00:00+03:00",
+    "sources": [
+      {
+        "id": "telemetry_sqlite",
+        "label": "Telemetry calibration SQLite snapshot",
+        "query": {
+          "engine": "sqlite",
+          "description": "Агрегированный срез текущего telemetry-only run; реальные ордера, исходы и PnL не записываются.",
+          "language": "sql",
+          "sql": "SELECT * FROM telemetry_snapshots WHERE run_id = 'aee5c46a-b1a5-47ba-8eec-fef8ecc70e93' ORDER BY ts;",
+          "tables_used": ["telemetry_snapshots", "telemetry_ws_gaps", "telemetry_errors"],
+          "filters": ["run_id = aee5c46a-b1a5-47ba-8eec-fef8ecc70e93", "фиксированные пороги из STRATEGY_SPEC_DRAFT.md"],
+          "metric_definitions": [
+            "Контрфактический вход: один направленный шок >= 4 центов, свежие все три источника <= 750 мс, Binance-нейтральность <= 4 bps, дисбаланс <= -0.20, исполнимые цена/спред/глубина и 60-секундный cooldown.",
+            "Независимый представитель: самый ранний контрфактический вход в заданном часовой episode_id; это единица будущего статистического вывода.",
+            "Свежий снимок: лаг Polymarket UP, Polymarket DOWN и Binance <= 750 мс после clock-offset correction."
+          ]
+        }
+      }
+    ],
+    "cards": [
+      {
+        "id": "counterfactual_candidates",
+        "dataset": "headline",
+        "sourceId": "telemetry_sqlite",
+        "description": "Повторяющиеся условия внутри эпизодов; это не реальные покупки.",
+        "metrics": [
+          {"label": "Контрфактические входы после cooldown", "field": "counterfactual_candidates", "format": "compact"}
+        ]
+      },
+      {
+        "id": "episode_reps",
+        "dataset": "headline",
+        "sourceId": "telemetry_sqlite",
+        "description": "Число независимых часовых эпизодов с хотя бы одним кандидатом.",
+        "metrics": [
+          {"label": "Независимые представители эпизодов", "field": "episode_representatives", "format": "number"}
+        ]
+      },
+      {
+        "id": "fresh_coverage",
+        "dataset": "headline",
+        "sourceId": "telemetry_sqlite",
+        "description": "Доля всех снимков, прошедших freshness-gate по трём источникам.",
+        "metrics": [
+          {"label": "Свежие снимки", "field": "fresh_share", "format": "percent"}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "filter_funnel",
+        "title": "Воронка фиксированных фильтров",
+        "subtitle": "Текущий telemetry-only срез; значения — строки, а не независимые сделки.",
+        "type": "bar",
+        "dataset": "filter_funnel",
+        "sourceId": "telemetry_sqlite",
+        "layout": "full",
+        "encodings": {
+          "x": {"field": "stage", "type": "nominal", "label": "Этап"},
+          "y": {"field": "count", "type": "quantitative", "label": "Снимки", "format": "compact"},
+          "tooltip": [
+            {"field": "stage", "type": "text", "label": "Этап"},
+            {"field": "count", "type": "quantitative", "label": "Снимки", "format": "number"},
+            {"field": "share_of_previous", "type": "quantitative", "label": "От предыдущего этапа", "format": "percent"}
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "daily_quality",
+        "title": "Качество данных по UTC-дням",
+        "subtitle": "Старые Polymarket-книги в части 3 сентября сохраняются и исключаются freshness-gate.",
+        "dataset": "daily_quality",
+        "sourceId": "telemetry_sqlite",
+        "layout": "full",
+        "density": "spacious",
+        "defaultSort": {"field": "day_utc", "direction": "asc"},
+        "columns": [
+          {"field": "day_utc", "label": "UTC-день", "type": "text"},
+          {"field": "snapshots", "label": "Снимки", "format": "number"},
+          {"field": "fresh_snapshots", "label": "Свежие", "format": "number"},
+          {"field": "fresh_share", "label": "Доля свежих", "format": "percent"}
+        ]
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Telemetry: условия часты, но edge ещё не доказан"
+      },
+      {
+        "id": "correction_2026_09_05",
+        "type": "markdown",
+        "body": "## Исправление от 5 сентября: прежний вывод отозван\n\nЭтот отчёт сохранён как исторический. Прежний расчёт 983 кандидатов пропустил фильтр evaluation_window. Повторный read-only аудит того же среза (cutoff 1788545077.0430079, 148461 строка) с временным окном и проверками валидности дал 775 условных кандидатов. Исторический статус рынка и токены не сохранены, поэтому полную проверку market_integrity восстановить нельзя.\n\nФормулировки ниже «независимые эпизоды», «все фильтры пройдены» и «старая книга отбрасывается сборщиком» были чрезмерными: часовые группы не доказывают независимость; устаревшие книги Polymarket записываются, а отсеиваются только офлайн-проверкой. Точность 10-секундных опорных котировок через разрывы и лаг на общем времени решения ещё не сертифицированы. Для дальнейшего использования действуют decision_audit.py и BOT_LEARNING.md. Остальная часть страницы воспроизводит прежний, не исправленный срез и не служит основанием для запуска торговли."
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "telemetry_sqlite",
+        "body": "## Executive Summary\n\n- **Гипотеза операционно жизнеспособна:** за ~43 часа нашлось 983 контрфактических входа после всех фиксированных условий и cooldown. Это не редкий сигнал.\n- **Это в основном повторения, а не 983 независимые возможности:** они сводятся к 43 часовым представителям эпизодов — около 23 кандидатов на эпизод.\n- **Edge пока неизвестен:** telemetry не содержит ордеров, исходов рынков или PnL, поэтому из этих цифр нельзя вывести win rate, ожидаемую доходность или решение о live BUY.\n- **Качество сейчас восстановилось:** свежими были 91.6% всех снимков, а за 4 сентября — 99.6%; участок старых Polymarket-книг остаётся явно маркированным и не проходит freshness-gate."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": ["counterfactual_candidates", "episode_reps", "fresh_coverage"]
+      },
+      {
+        "id": "frequency_finding",
+        "type": "markdown",
+        "sourceId": "telemetry_sqlite",
+        "body": "## Фильтры находят много повторных условий\n\n**Главный практический вывод — проблема не в редкости сетапа.** Направленный шок >=4 центов возник в 33.5k снимках. После свежести, нейтральности Binance, дисбаланса книги, исполнимости и 60-секундного cooldown осталось 983 кандидата: 507 UP и 476 DOWN. Баланс направлений не показывает очевидного перекоса на этой ранней выборке.\n\n**Но cooldown не делает строки независимыми.** Он лишь подавляет соседние записи той же ситуации. Будущий статистический вывод должен опираться на единственного раннего представителя каждого episode_id, как зафиксировано в стратегии."
+      },
+      {
+        "id": "funnel_context",
+        "type": "markdown",
+        "sourceId": "telemetry_sqlite",
+        "body": "## Решающие ограничения — дисбаланс и cooldown\n\nСвежесть почти не режет именно строки со шоком: 33.4k из 33.5k прошли этот этап. Более сильный отбор дают reversal orderbook и затем cooldown. Это говорит о том, что входы возникают сериями вокруг одного рыночного эпизода, а не как единичные редкие события."
+      },
+      {
+        "id": "funnel_chart",
+        "type": "chart",
+        "chartId": "filter_funnel"
+      },
+      {
+        "id": "quality_finding",
+        "type": "markdown",
+        "sourceId": "telemetry_sqlite",
+        "body": "## Измерение в целом работает, но покрытие нужно мониторить\n\n**Система не подставляет старые цены как свежие.** Из 148.5k снимков 135.9k прошли общий порог 750 мс. Часть 3 сентября содержала устаревшие ответы Polymarket, но в 4 сентября свежесть вернулась к 99.6%. Binance WebSocket имел 305 записанных разрывов (около 59 минут суммарно); во время разрывов устаревшие котировки отклоняются, поэтому риск — неполное покрытие, а не ложные кандидаты."
+      },
+      {
+        "id": "quality_table",
+        "type": "table",
+        "tableId": "daily_quality"
+      },
+      {
+        "id": "recommendation",
+        "type": "markdown",
+        "sourceId": "telemetry_sqlite",
+        "body": "## Что делать дальше\n\n1. **Не менять пороги** и завершить утверждённые 14 дней telemetry: текущая выборка отвечает только на вопрос частоты и качества источников.\n2. **Не включать реальные покупки:** для ответа об edge нужны закрытые рынки, виртуальный PnL, интервалы Уилсона и эпизодная устойчивость.\n3. **Перед forward cohort проверить устойчивость каналов:** особенно долю свежих Polymarket-книг и суммарное время WebSocket-разрывов.\n4. **В следующей фазе использовать не 983 строки, а минимум 30 независимых эпизодов и заранее зафиксированного раннего представителя каждого эпизода.**"
+      },
+      {
+        "id": "open_questions",
+        "type": "markdown",
+        "body": "## Что пока остаётся неизвестным\n\n- Побеждает ли контрфактический вход после закрытия рынка.\n- Перекрывает ли его виртуальный PnL цену, спред и комиссии.\n- Не держится ли результат на одном-двух особых эпизодах.\n\nТолько отдельная forward cohort с резолвингом исходов сможет ответить на эти вопросы."
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## Caveats and assumptions\n\nЭто промежуточный снимок telemetry-only когорты, не backtest и не журнал сделок. Шоковые строки и кандидаты внутри одного часового episode_id коррелированы. Часть снимков без midpoint или со старым source timestamp не годится для принятия решения и должна оставаться исключённой из будущего outcome-анализа."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-09-04T00:00:00+03:00",
+    "status": "partial",
+    "datasets": {
+      "headline": [
+        {"counterfactual_candidates": 983, "episode_representatives": 43, "fresh_share": 0.915916}
+      ],
+      "filter_funnel": [
+        {"stage": "Шок >=4ц", "count": 33525, "share_of_previous": 1.0},
+        {"stage": "Свежесть", "count": 33426, "share_of_previous": 0.997047},
+        {"stage": "Binance нейтрален", "count": 26811, "share_of_previous": 0.802122},
+        {"stage": "Дисбаланс", "count": 10775, "share_of_previous": 0.401896},
+        {"stage": "Исполнимость", "count": 6199, "share_of_previous": 0.575313},
+        {"stage": "Cooldown 60с", "count": 983, "share_of_previous": 0.158574}
+      ],
+      "daily_quality": [
+        {"day_utc": "2026-09-02", "snapshots": 2716, "fresh_snapshots": 2714, "fresh_share": 0.999264},
+        {"day_utc": "2026-09-03", "snapshots": 82908, "fresh_snapshots": 70611, "fresh_share": 0.851682},
+        {"day_utc": "2026-09-04", "snapshots": 62837, "fresh_snapshots": 62605, "fresh_share": 0.996308}
+      ]
+    },
+    "accessIssues": [
+      {
+        "id": "outcomes_not_collected",
+        "scope": "snapshot",
+        "sourceId": "telemetry_sqlite",
+        "message": "Telemetry-only run intentionally has no market outcomes, virtual PnL, orders, fills, or wallet data. Profitability cannot be assessed from this report."
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "telemetry_sqlite",
+      "label": "Telemetry calibration SQLite snapshot",
+      "query": {
+        "engine": "sqlite",
+        "description": "Агрегированный срез текущего telemetry-only run; реальные ордера, исходы и PnL не записываются.",
+        "language": "sql",
+        "sql": "SELECT * FROM telemetry_snapshots WHERE run_id = 'aee5c46a-b1a5-47ba-8eec-fef8ecc70e93' ORDER BY ts;",
+        "tables_used": ["telemetry_snapshots", "telemetry_ws_gaps", "telemetry_errors"],
+        "filters": ["run_id = aee5c46a-b1a5-47ba-8eec-fef8ecc70e93", "фиксированные пороги из STRATEGY_SPEC_DRAFT.md"]
+      }
+    }
+  ]
+}
