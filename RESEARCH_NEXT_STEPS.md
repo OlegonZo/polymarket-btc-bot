@@ -1,5 +1,9 @@
 # Research readiness — 10 September 2026
 
+Current review and next actions: [16 September 2026](REVIEW_2026-09-16.md).
+The timed process statuses below are historical. Windows shut down during the
+10 September v4 acceptance; its last `running` progress file is not a pass.
+
 Status at 09:26 MSK: infrastructure fixes tested; clock blocker addressed in
 short smoke, full source acceptance RUNNING (not passed yet). No new telemetry
 calibration, strategy cohort, outcome collection or orders launched. Separate

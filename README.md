@@ -1,5 +1,11 @@
 # Polymarket BTC 15M Momentum Bot - Edge Measurement Framework
 
+Current engineering review: [16 September 2026](REVIEW_2026-09-16.md).
+The old directional-momentum results below belong to the archived strategy.
+The new microstructure-reversion study has telemetry only and no established
+profitability result. See [telemetry status](TELEMETRY_RUN.md) before starting
+or resuming collection; old calendar deadlines do not certify data coverage.
+
 An automated trading research system for the **BTC Up/Down 15-minute** prediction market on Polymarket, built primarily as an apparatus for measuring whether short-horizon BTC momentum retains edge after market-implied pricing.
 
 The headline result of this project is a **negative one**, and it is stated up front by design. The value of the repo is the measurement infrastructure and the discipline used to reach that conclusion, not a green PnL curve.

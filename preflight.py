@@ -14,6 +14,7 @@ from pathlib import Path
 import sqlite3
 import time
 from typing import Any, Optional
+from run_health import RunJournal, atomic_json, exclusive_run, read_status, source_fingerprint
 
 from decision_audit import audit
 from shadow_cohort import market_state_from_gamma
@@ -173,10 +174,31 @@ def acceptance_criteria(observation: dict[str, Any]) -> dict[str, bool]:
 
 def source_acceptance(*, duration_seconds: float, endpoint_probe_seconds: float,
                       output: Optional[Path] = None) -> dict[str, Any]:
+    if output is None:
+        return _source_acceptance(duration_seconds=duration_seconds, endpoint_probe_seconds=endpoint_probe_seconds)
+    with exclusive_run(output.with_suffix(".lock")):
+        if output.exists():
+            raise FileExistsError("preserve prior acceptance evidence; choose a new --output")
+        journal = RunJournal(output.with_suffix(".progress.json"), kind="source_acceptance",
+                             planned_duration_seconds=duration_seconds)
+        journal.update("starting", stage="fee_and_endpoint_probes")
+        try:
+            return _source_acceptance(duration_seconds=duration_seconds,
+                                      endpoint_probe_seconds=endpoint_probe_seconds, output=output, journal=journal)
+        except BaseException as exc:
+            journal.update("interrupted" if isinstance(exc, KeyboardInterrupt) else "failed",
+                           error_type=type(exc).__name__, error=str(exc), passed=False)
+            raise
+
+
+def _source_acceptance(*, duration_seconds: float, endpoint_probe_seconds: float,
+                       output: Optional[Path] = None, journal=None) -> dict[str, Any]:
     config = TelemetryConfig(Path("data/preflight-unused.sqlite3"))
     fee = validate_live_fee_schedule(config)
     endpoints: dict[str, Any] = {}
     for endpoint in DEFAULT_BINANCE_DEPTH_ENDPOINTS:
+        if journal is not None:
+            journal.update("running", stage="endpoint_probe", endpoint=endpoint)
         depth_url, time_url = _rest_urls_for_ws(endpoint)
         feed = BinanceDepthFeed(config, ws_url=endpoint, depth_snapshot_url=depth_url, server_time_url=time_url)
         endpoints[endpoint] = _observe_feed(feed, endpoint_probe_seconds)
@@ -189,9 +211,10 @@ def source_acceptance(*, duration_seconds: float, endpoint_probe_seconds: float,
         )
     failover = FailoverBinanceDepthFeed(config)
     def progress(payload):
-        if output is not None:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.with_suffix(".progress.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if journal is not None:
+            values = dict(payload)
+            status = values.pop("status")
+            journal.update(status, stage="failover_observation", **values)
     transport = _observe_feed(failover, duration_seconds, sample_seconds=.25,
                               exercise_reconnect=True, progress_callback=progress)
     transport["events"] = [asdict(event) for event in failover.drain_transport_events()]
@@ -209,8 +232,9 @@ def source_acceptance(*, duration_seconds: float, endpoint_probe_seconds: float,
         "passed": bool(fee["passed"] and usable_endpoints and all(acceptance_criteria(transport).values())),
     }
     if output is not None:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        if journal is not None:
+            result["source_sha256"] = journal.payload["source_sha256"]
+        atomic_json(output, result)
         progress({"status": "complete", "passed": result["passed"], "report": str(output)})
     return result
 
@@ -271,6 +295,8 @@ def final_telemetry_quality(db: Path, run_id: str, *, now_ts: Optional[float] = 
     pm_down = report["source_freshness"]["polymarket_down"]["payload_timestamp_within_750ms_pct"]
     binance = report["source_freshness"]["binance"]["payload_timestamp_within_750ms_pct"]
     criteria = {
+        "planned_interval_complete": now >= float(run["planned_end_ts"]),
+        "planned_at_least_14_calendar_days": float(run["planned_end_ts"]) - float(run["started_ts"]) >= 14 * 86400,
         "minimum_13_9_observed_days": elapsed_days >= 13.9,
         "unique_snapshot_grain": rows == distinct_rows,
         "maximum_gap_at_most_300_seconds": total_gap <= 300.0,
@@ -283,6 +309,10 @@ def final_telemetry_quality(db: Path, run_id: str, *, now_ts: Optional[float] = 
         "midpoint_missing_at_most_15pct": report["midpoint_missing_analysis"]["rows_with_any_missing_pct"] <= 15.0,
         "negative_lag_rate_at_most_0_5pct": sum(int(value or 0) for value in negatives) / (3 * rows) <= .005,
     }
+    decision_freshness = report.get("decision_time_freshness", {})
+    for source, minimum in (("up", 95), ("down", 95), ("binance", 99)):
+        pct = decision_freshness.get(source, {}).get("fresh_all_saved_rows_pct")
+        criteria[f"{source}_decision_time_fresh_with_clock_bound"] = pct is not None and pct >= minimum
     return {
         "mode": "final_telemetry_quality_no_edge_claim",
         "run_id": run_id, "rows": rows, "elapsed_days": elapsed_days,
@@ -300,6 +330,41 @@ def final_telemetry_quality(db: Path, run_id: str, *, now_ts: Optional[float] = 
     }
 
 
+def short_telemetry_acceptance(db: Path, run_id: str) -> dict[str, Any]:
+    """Fixed engineering checks for a disposable >=15-minute full collector run."""
+    quality = final_telemetry_quality(db, run_id, include_audit=False)
+    if not quality.get("rows"):
+        return {"mode": "short_telemetry_acceptance", "passed": False, "quality": quality}
+    report = quality["telemetry_report"]
+    with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        run = conn.execute("SELECT started_ts,planned_end_ts,config_json FROM telemetry_runs WHERE run_id=?", (run_id,)).fetchone()
+    cadence = report["snapshot_gaps_seconds"]["p50"]
+    config = json.loads(run[2])
+    status_path = db.with_suffix(".status.json")
+    status = json.loads(status_path.read_text(encoding="utf-8")) if status_path.exists() else {}
+    measured_files = ("telemetry.py", "shadow_runtime.py", "clock_sync.py")
+    tested_code = {name: status.get("source_sha256", {}).get(name) for name in measured_files}
+    current_code = source_fingerprint()
+    criteria = {
+        "completed_matching_run_identity": status.get("run_id") == run_id and status.get("status") == "complete",
+        "tested_measurement_code_matches_current": all(tested_code[name] == current_code[name] for name in measured_files),
+        "completed_at_least_900_seconds": time.time() >= run[1] and run[1] - run[0] >= 900,
+        "complete_attempt_history": quality["attempts"]["history_complete"],
+        "at_least_95pct_successful_attempts": (quality["attempts"]["successful_fraction"] or 0) >= .95,
+        "at_least_95pct_scheduled_slots": quality["attempts"]["successful_scheduled_slot_fraction"] >= .95,
+        "maximum_300_seconds_without_snapshot": quality["max_coverage_gap_seconds"] <= 300,
+        "cadence_p50_within_10pct_of_target": cadence is not None and cadence <= config["poll_seconds"] * 1.1,
+        "midpoint_missing_at_most_15pct": report["midpoint_missing_analysis"]["rows_with_any_missing_pct"] <= 15,
+    }
+    for source in ("up", "down", "binance"):
+        criteria[f"{source}_decision_time_fresh_with_clock_bound"] = quality["criteria"][f"{source}_decision_time_fresh_with_clock_bound"]
+    return {"mode": "disposable_end_to_end_telemetry_acceptance_no_cohort_approval",
+            "passed": all(criteria.values()), "criteria": criteria, "run_id": run_id,
+            "measurement_source_sha256": tested_code,
+            "run_config": config, "quality": quality,
+            "limitation": "Short engineering test; does not replace 14 calendar days of calibration or validate Polymarket server clock skew."}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -312,7 +377,22 @@ def main() -> int:
     quality.add_argument("--output", type=Path)
     quality.add_argument("--skip-offline-audit", action="store_true",
                          help="Run snapshot-consistent quality gates without the separate descriptive replay")
+    status = sub.add_parser("status")
+    status.add_argument("--progress", type=Path, required=True)
+    short = sub.add_parser("telemetry-check")
+    short.add_argument("--db", type=Path, required=True)
+    short.add_argument("--run-id", required=True)
+    short.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.command == "status":
+        result = read_status(args.progress)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 2 if result["status"] in {"stale_unknown", "failed", "interrupted"} else 0
+    if args.command == "telemetry-check":
+        result = short_telemetry_acceptance(args.db, args.run_id)
+        atomic_json(args.output, result)
+        print(json.dumps({key: value for key, value in result.items() if key != "quality"}, indent=2))
+        return 0 if result["passed"] else 2
     if args.command == "sources":
         result = source_acceptance(duration_seconds=args.duration_seconds,
                                    endpoint_probe_seconds=args.endpoint_probe_seconds, output=args.output)

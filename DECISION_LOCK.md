@@ -86,3 +86,18 @@ After collection:
    Wilson intervals with Bonferroni correction, solo-block attribution,
    drop-best-episode stability, leave-one-episode-out stability, and
    leave-one-UTC-day-out stability checks.
+
+## Measurement review — 16 September 2026
+
+The new telemetry measurement version is `telemetry-observation-v2`. It fixes
+source integration, observation/baseline evidence and process lifecycle; none
+of the eight strategy thresholds or `LOCKED_PARAMETERS` is retuned. Legacy
+calibration data is retained descriptively in its original database. Recovery
+uses a fresh full 14-day interval after completed source and collector tests,
+without merging legacy segments. See `REVIEW_2026-09-16.md` for the evidence.
+
+This does not approve a strategy cohort. Cohort parameters and identity still
+require the separate post-telemetry decision. In future reports, pending accepted
+representatives cannot be omitted to obtain a positive conclusion, and both
+row-weighted and equal-episode means must agree with the primary representative
+result. The explicit primary family size is one; filter diagnostics retain eight.

@@ -93,11 +93,11 @@ class ShadowCohortTests(unittest.TestCase):
     def test_binance_freshness_applies_measured_clock_offset(self):
         # Local time is 1.1s ahead of Binance.  The quote is actually 100ms
         # old, so it must pass rather than be rejected from its raw timestamp.
-        corrected = replace(snapshot(), ts=101.2, up_book=book(source_ts=101.2), down_book=book(source_ts=101.2),
+        corrected = replace(snapshot(), ts=101.2, up_book=book(source_ts=100.1), down_book=book(source_ts=100.1),
                             binance_source_ts=100.1,
                             system_clock_offset_ms=1_100.0, system_clock_uncertainty_ms=100.0)
         self.assertTrue(evaluate_all(corrected)["book_freshness"].passed)
-        too_old = replace(corrected, ts=102.0, up_book=book(source_ts=102.0), down_book=book(source_ts=102.0))
+        too_old = replace(corrected, ts=102.0, up_book=book(source_ts=100.8), down_book=book(source_ts=100.8))
         self.assertFalse(evaluate_all(too_old)["book_freshness"].passed)
         self.assertEqual(evaluate_all(too_old)["book_freshness"].reason, "binance_stale_after_clock_uncertainty")
 

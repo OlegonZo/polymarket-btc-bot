@@ -258,5 +258,12 @@ if __name__ == "__main__":
     parser.add_argument("--db", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--until", type=float, help="Inclusive fixed Unix cutoff for repeatable historical audits")
+    parser.add_argument("--output", type=Path, help="Save the read-only audit and exact query evidence")
     args = parser.parse_args()
-    print(json.dumps(audit(args.db, args.run_id, args.until), indent=2, ensure_ascii=False))
+    result = audit(args.db, args.run_id, args.until)
+    if args.output:
+        from run_health import atomic_json
+        atomic_json(args.output, result)
+        print(json.dumps({key: result[key] for key in ("rows", "conditional_candidates", "hour_bins_with_candidates", "fully_verified_entries")}, indent=2))
+    else:
+        print(json.dumps(result, indent=2, ensure_ascii=False))

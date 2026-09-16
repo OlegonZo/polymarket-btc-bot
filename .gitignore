@@ -5,3 +5,9 @@ data/*.sqlite3
 data/*.log
 reports/*.log
 reports/*.progress.json
+data/*.status.json
+data/*.lock
+data/*.sqlite3-*
+reports/*.lock
+*.tmp
+backups/

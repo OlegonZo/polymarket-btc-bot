@@ -1,5 +1,39 @@
 # Telemetry-only calibration status
 
+## Review: 16 September 2026
+
+See [REVIEW_2026-09-16.md](REVIEW_2026-09-16.md) for the current checked state.
+The 17 September deadline below belongs only to the interrupted legacy run.
+It must not be interpreted as a completed calibration. A replacement interval
+uses a separate database and `measurement_version=telemetry-observation-v2`.
+
+Both engineering acceptance tests passed. The replacement interval is now
+**16 September 2026 09:08:42 MSK — 30 September 2026 09:08:42 MSK**.
+Run ID: `2e41feff-50ea-4bfa-b4eb-76da90b4eaea`.
+Database: `data/telemetry_observation_v2_20260916.sqlite3`.
+Windows task: `PolymarketTelemetryObservationV2`, current-user logon trigger,
+20 one-minute failure retries and duplicate-instance protection. Task startup
+and successful writes were verified; reboot recovery has not been exercised.
+The host must stay on and online; recovery requires user logon. No strategy
+cohort, outcomes, PnL or live orders are enabled. A date alone does not pass
+the final coverage/quality gates. Legacy and acceptance data remain separate.
+
+New CLI controls:
+
+```powershell
+.\.venv\Scripts\python.exe preflight.py status --progress reports/source_acceptance_review_2026-09-16.progress.json
+.\.venv\Scripts\python.exe telemetry.py status --db data/telemetry_observation_v2_20260916.sqlite3
+```
+
+`stale_unknown` means the heartbeat is older than 120 seconds (or is future-dated).
+It does not certify a live process. A recent `running` heartbeat likewise does
+not certify valid quotes: check the last successful snapshot and attempt counts.
+`--resume-latest` never starts another interval after the stored deadline and
+requires the original code fingerprint and configuration. Reports open SQLite
+read-only. Use an explicit `--output` for durable report JSON.
+
+### Historical record
+
 **Status: stopped early; retained for frequency diagnostics, invalid for final coverage.**
 
 Update, 2026-09-10: the last snapshot was written at 2026-09-09 07:53:26

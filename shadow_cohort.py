@@ -461,10 +461,9 @@ def _source_fresh(decision_ts: object, source_ts: object, source_kind: object,
         return False, "missing_payload_source_timestamp"
     if not _finite(clock_offset_ms) or not _finite(uncertainty_ms) or uncertainty_ms < 0:
         return False, "missing_clock_uncertainty"
-    # Binance's event time is on the exchange clock.  ``clock_offset_ms`` is
-    # local minus exchange time, measured by the synchronized feed, so remove
-    # it before applying the freshness threshold.  Polymarket source times use
-    # zero adjustment because this collector has no equivalent clock sync.
+    # Local-minus-Binance offset is the available UTC-reference estimate for
+    # both sources, as in telemetry. Polymarket-to-Binance clock skew remains
+    # an unmeasured assumption, not a separately calibrated server clock.
     lag_ms = (float(decision_ts) - float(source_ts)) * 1000.0 - float(clock_offset_ms)
     if lag_ms < 0:
         return False, "negative_source_lag"
@@ -506,8 +505,8 @@ def evaluation_window(snapshot: ShadowSnapshot) -> Verdict:
 
 
 def book_freshness(snapshot: ShadowSnapshot) -> Verdict:
-    for name, source_ts, kind, offset_ms in (("up", snapshot.up_book.source_ts, snapshot.up_book.source_ts_kind, 0.0),
-                                             ("down", snapshot.down_book.source_ts, snapshot.down_book.source_ts_kind, 0.0),
+    for name, source_ts, kind, offset_ms in (("up", snapshot.up_book.source_ts, snapshot.up_book.source_ts_kind, snapshot.system_clock_offset_ms),
+                                             ("down", snapshot.down_book.source_ts, snapshot.down_book.source_ts_kind, snapshot.system_clock_offset_ms),
                                              ("binance", snapshot.binance_source_ts, snapshot.binance_source_ts_kind,
                                               snapshot.system_clock_offset_ms)):
         passed, reason = _source_fresh(snapshot.ts, source_ts, kind, offset_ms, snapshot.system_clock_uncertainty_ms)
@@ -1075,6 +1074,23 @@ def _filter_diagnostics(rows: Sequence[sqlite3.Row]) -> dict[str, object]:
         pnls = [float(row["net_virtual_pnl"]) for row in resolved]
         wins = sum(float(row["net_virtual_pnl"]) > 0 for row in resolved)
         diagnostics[name] = {"family_size": family_size, "bonferroni_z": bonferroni_z, "candidate_episode_representatives": len(incremental), "resolved_episode_representatives": len(resolved), "status": "LOW_CONFIDENCE" if len(resolved) < MIN_RESOLVED_EPISODES else "DESCRIPTIVE", "net_pnl_bootstrap": bootstrap_mean_interval(pnls), "win_rate_wilson": wilson_interval(wins, len(resolved), z=bonferroni_z), "episode_stability": episode_stability(pnls), "limitation": "filter-removal replay is limited to stored directional candidates"}
+        # Freeze the earliest eligible row before considering resolution state.
+        # Never substitute a later resolved row for a pending representative.
+        blocked = _representatives(rows, lambda row: not _read_verdicts(str(row["verdicts_json"]))[name].passed)
+        solo = _representatives(rows, lambda row: all(
+            verdict.passed == (key != name) for key, verdict in _read_verdicts(str(row["verdicts_json"])).items()))
+        for label, representatives, z in (("solo_blocked", solo, bonferroni_z),
+                                          ("all_blocked_descriptive", blocked, 1.959963984540054)):
+            completed = [row for row in representatives if row["resolution_state"] == "RESOLVED"]
+            values = [float(row["net_virtual_pnl"]) for row in completed]
+            diagnostics[name][label] = {
+                "eligible_episode_representatives": len(representatives),
+                "resolved_episode_representatives": len(completed),
+                "status": "LOW_CONFIDENCE" if len(completed) < MIN_RESOLVED_EPISODES else "DESCRIPTIVE",
+                "win_rate_wilson": wilson_interval(sum(value > 0 for value in values), len(values), z=z),
+                "mean_net_pnl": mean(values) if values else None,
+                "caveat": "blocked-trade outcome association is not the causal benefit of this filter",
+            }
     return diagnostics
 
 
@@ -1143,6 +1159,11 @@ def cohort_report(store: ShadowStore, definition: CohortDefinition, *, as_of_ts:
     for row in resolved_reps:
         daily_episode_pnls.setdefault(str(row["day_utc"]), []).append(float(row["net_virtual_pnl"]))
     accepted_rows = [row for row in rows if row["would_enter"] and row["resolution_state"] == "RESOLVED"]
+    accepted_by_episode: dict[str, list[float]] = {}
+    for row in accepted_rows:
+        accepted_by_episode.setdefault(str(row["episode_id"]), []).append(float(row["net_virtual_pnl"]))
+    row_mean = mean(float(row["net_virtual_pnl"]) for row in accepted_rows) if accepted_rows else None
+    equal_episode_mean = mean(mean(values) for values in accepted_by_episode.values()) if accepted_by_episode else None
     all_resolved = [row for row in rows if row["resolution_state"] == "RESOLVED"]
     elapsed_days = (as_of_ts - definition.collection_started_ts) / 86_400.0
     coverage = _coverage_report(store, definition, as_of_ts, min_complete_rate)
@@ -1159,14 +1180,22 @@ def cohort_report(store: ShadowStore, definition: CohortDefinition, *, as_of_ts:
     gates = {"minimum_calendar_days": elapsed_days >= MIN_CALENDAR_DAYS, "heartbeat_coverage": coverage["valid"], "minimum_resolved_candidates": len(all_resolved) >= MIN_RESOLVED_CANDIDATES, "minimum_resolved_accepted_episodes": len(resolved_reps) >= MIN_RESOLVED_EPISODES, "no_retry_exhaustion": states["RETRY_EXHAUSTED"] == 0, "no_quarantined_rows": states["QUARANTINED"] == 0}
     bootstrap, stability = bootstrap_mean_interval(episode_pnls), episode_stability(episode_pnls)
     gates["complete_as_of_history"] = states["AS_OF_UNKNOWN"] == 0
+    # Resolving only the quick/easy markets can otherwise select the sample
+    # after outcomes. Require terminal evidence for every accepted representative.
+    gates["all_accepted_representatives_terminal"] = bool(accepted_reps) and all(
+        row["resolution_state"] in {"RESOLVED", "VOID"} for row in accepted_reps)
     daily_stability = grouped_stability(daily_episode_pnls)
-    if not all(gates.values()):
+    if elapsed_days >= FEASIBILITY_STOP_DAYS and (
+            len(all_resolved) < MIN_RESOLVED_CANDIDATES or len(resolved_reps) < MIN_RESOLVED_EPISODES):
+        strategy_status = "INFEASIBLE_AT_REGISTERED_HORIZON"
+    elif not all(gates.values()):
         strategy_status = "INSUFFICIENT_OR_INVALID_DATA"
-    elif stability["status"] != "STABLE_POSITIVE" or daily_stability["status"] != "STABLE_POSITIVE":
+    elif (stability["status"] != "STABLE_POSITIVE" or daily_stability["status"] != "STABLE_POSITIVE"
+          or row_mean is None or row_mean <= 0 or equal_episode_mean is None or equal_episode_mean <= 0):
         strategy_status = "NO_STABLE_POSITIVE_NET_SHADOW_EV"
     elif bootstrap is None or bootstrap["lower"] <= 0:
         strategy_status = "POSITIVE_BUT_STATISTICALLY_INCONCLUSIVE"
     else:
         strategy_status = "POSITIVE_IID_ESTIMATE_REQUIRES_CLUSTER_AND_EXECUTION_VALIDATION"
     wins = sum(float(row["net_virtual_pnl"]) > 0 for row in resolved_reps)
-    return {"utc_day_cluster_sensitivity": day_cluster_sensitivity(daily_episode_pnls), "cohort_name": definition.cohort_name, "strategy_version": definition.strategy_version, "parameters_sha256": definition.parameters_sha256, "mode": "shadow_only_no_orders", "as_of_ts": as_of_ts, "collection_elapsed_days": elapsed_days, "coverage": coverage, "transport": transport_summary, "observations": len(rows), "would_enter_rows": sum(int(row["would_enter"]) for row in rows), "resolution_states": dict(states), "resolved_candidate_rows": len(all_resolved), "accepted_episode_representatives": len(accepted_reps), "resolved_accepted_episode_representatives": len(resolved_reps), "pending_or_invalid_episode_representatives": len(accepted_reps) - len(resolved_reps), "first_accepted_representative_rule": "frozen_at_record_time_by_smallest_(ts,snapshot_id)", "primary_net_pnl": {"representative_bootstrap": bootstrap, "episode_stability": stability, "utc_day_stability": daily_stability, "row_weighted_mean": None if not accepted_rows else mean(float(row["net_virtual_pnl"]) for row in accepted_rows)}, "supporting_win_rate_wilson": wilson_interval(wins, len(resolved_reps)), "pre_registered_gates": gates, "strategy_status": strategy_status, "filter_diagnostics": _filter_diagnostics(rows), "live_buy_enabled": False, "limitations": ["P&L uses a one-share near-touch VWAP estimate and observed taker fee; it is not a fill.", "Slippage beyond displayed depth, partial fills, latency, exits, cancellations and inventory risk need a separate execution study.", "The microshock trigger cannot be attributed because no non-microshock rows are stored.", "A positive shadow report never authorizes live trading."]}
+    return {"primary_family_size": 1, "equal_weighted_episode_mean": equal_episode_mean, "utc_day_cluster_sensitivity": day_cluster_sensitivity(daily_episode_pnls), "cohort_name": definition.cohort_name, "strategy_version": definition.strategy_version, "parameters_sha256": definition.parameters_sha256, "mode": "shadow_only_no_orders", "as_of_ts": as_of_ts, "collection_elapsed_days": elapsed_days, "coverage": coverage, "transport": transport_summary, "observations": len(rows), "would_enter_rows": sum(int(row["would_enter"]) for row in rows), "resolution_states": dict(states), "resolved_candidate_rows": len(all_resolved), "accepted_episode_representatives": len(accepted_reps), "resolved_accepted_episode_representatives": len(resolved_reps), "pending_or_invalid_episode_representatives": len(accepted_reps) - len(resolved_reps), "first_accepted_representative_rule": "frozen_at_record_time_by_smallest_(ts,snapshot_id)", "primary_net_pnl": {"representative_bootstrap": bootstrap, "episode_stability": stability, "utc_day_stability": daily_stability, "row_weighted_mean": None if not accepted_rows else mean(float(row["net_virtual_pnl"]) for row in accepted_rows)}, "supporting_win_rate_wilson": wilson_interval(wins, len(resolved_reps)), "pre_registered_gates": gates, "strategy_status": strategy_status, "filter_diagnostics": _filter_diagnostics(rows), "live_buy_enabled": False, "limitations": ["P&L uses a one-share near-touch VWAP estimate and observed taker fee; it is not a fill.", "Slippage beyond displayed depth, partial fills, latency, exits, cancellations and inventory risk need a separate execution study.", "The microshock trigger cannot be attributed because no non-microshock rows are stored.", "A positive shadow report never authorizes live trading."]}

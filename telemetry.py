@@ -14,6 +14,7 @@ import statistics
 import threading
 import time
 import uuid
+from contextlib import closing
 from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
@@ -27,6 +28,7 @@ from urllib.request import Request, urlopen
 
 import websocket
 from clock_sync import ClockSampler
+from run_health import RunJournal, atomic_json, exclusive_run, read_status, source_fingerprint
 
 GAMMA_EVENT_URL = "https://gamma-api.polymarket.com/events/slug/{slug}"
 CLOB_BOOK_URL = "https://clob.polymarket.com/book?token_id={token_id}"
@@ -58,6 +60,7 @@ class TelemetryConfig:
     clock_sync_samples: int = 3
     clock_resync_seconds: float = 300.0
     binance_profile: str = "primary"
+    measurement_version: str = "telemetry-observation-v2"
 
     @property
     def effective_duration_seconds(self) -> float:
@@ -202,6 +205,7 @@ class FeatureRow:
     btc_return_10s: Optional[float]
     up_imbalance_3: Optional[float]
     down_imbalance_3: Optional[float]
+    baseline_ts: Optional[float] = None
 
 
 def utc_now_ts() -> float:
@@ -709,24 +713,35 @@ class BinanceDepthFeed:
 
 def value_before(history: Iterable[Tuple[float, float]], target_ts: float) -> Optional[float]:
     selected: Optional[float] = None
+    selected_ts = None
     for ts, value in history:
         if ts <= target_ts:
             selected = value
+            selected_ts = ts
         else:
             break
-    return selected
+    return selected if selected_ts is not None and target_ts - selected_ts <= 1.0 else None
 
 
 def calculate_features(current_ts: float, up_mid: Optional[float], down_mid: Optional[float], binance_mid: float,
                        up_history: Iterable[Tuple[float, float]], down_history: Iterable[Tuple[float, float]],
                        binance_history: Iterable[Tuple[float, float]], up_book: Book, down_book: Book) -> FeatureRow:
     target_ts = current_ts - HISTORY_SECONDS
+    up_history, down_history, binance_history = tuple(up_history), tuple(down_history), tuple(binance_history)
     old_up, old_down, old_binance = (value_before(history, target_ts) for history in
                                      (up_history, down_history, binance_history))
+    # Collector histories contain the same complete observations. Never use
+    # three different or arbitrarily old anchors across an outage.
+    anchors = [next((ts for ts, _ in reversed(history) if ts <= target_ts), None)
+               for history in (up_history, down_history, binance_history)]
+    baseline_ts = anchors[0]
+    if baseline_ts is None or len(set(anchors)) != 1 or target_ts - baseline_ts > 1.0:
+        baseline_ts = None
+        old_up = old_down = old_binance = None
     return FeatureRow(None if up_mid is None or old_up is None else up_mid - old_up,
                       None if down_mid is None or old_down is None else down_mid - old_down,
                       None if old_binance is None or old_binance <= 0.0 else math.log(binance_mid / old_binance),
-                      up_book.imbalance(3), down_book.imbalance(3))
+                      up_book.imbalance(3), down_book.imbalance(3), baseline_ts)
 
 
 SCHEMA = """
@@ -777,6 +792,7 @@ _MIGRATIONS = {
     "up_source_ts_kind": "TEXT NOT NULL DEFAULT 'unavailable'", "down_source_ts_kind": "TEXT NOT NULL DEFAULT 'unavailable'",
     "binance_source_ts_kind": "TEXT NOT NULL DEFAULT 'unavailable'", "up_midpoint_missing_reason": "TEXT",
     "down_midpoint_missing_reason": "TEXT",
+    "observed_ts": "REAL", "feature_baseline_ts": "REAL",
 }
 _ERROR_MIGRATIONS = {"endpoint": "TEXT", "classification": "TEXT NOT NULL DEFAULT 'unknown'", "attempt": "INTEGER",
                      "max_attempts": "INTEGER", "retry_delay_ms": "REAL"}
@@ -826,7 +842,7 @@ class TelemetryStore:
         return str(row[0]), float(row[1])
 
     def record_snapshot(self, run_id: str, ts: float, market: MarketPair, up_book: Book, down_book: Book,
-                        binance: BinanceQuote, features: FeatureRow) -> float:
+                        binance: BinanceQuote, features: FeatureRow, *, observed_ts: Optional[float] = None) -> float:
         day_utc, episode_id = datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat(), f"btc-episode-{int(ts // 3600)}"
         started = time.perf_counter()
         self.conn.execute(
@@ -835,7 +851,7 @@ class TelemetryStore:
             "up_source_ts,down_source_ts,binance_source_ts,up_received_ts,down_received_ts,binance_received_ts,up_source_lag_ms,"
             "down_source_lag_ms,binance_source_lag_ms,system_clock_offset_ms,system_clock_uncertainty_ms,"
             "up_source_ts_kind,down_source_ts_kind,binance_source_ts_kind,"
-            "up_midpoint_missing_reason,down_midpoint_missing_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "up_midpoint_missing_reason,down_midpoint_missing_reason,observed_ts,feature_baseline_ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (run_id,ts,day_utc,episode_id,market.market_id,market.slug,up_book.midpoint,down_book.midpoint,binance.midpoint,
              features.up_delta_10s,features.down_delta_10s,features.btc_return_10s,features.up_imbalance_3,features.down_imbalance_3,
              json.dumps(up_book.top_levels()),json.dumps(down_book.top_levels()),up_book.source_ts,down_book.source_ts,binance.source_ts,
@@ -844,7 +860,7 @@ class TelemetryStore:
              None if down_book.source_lag_ms is None else down_book.source_lag_ms - binance.clock_offset_ms,
              binance.source_lag_ms,binance.clock_offset_ms,binance.clock_uncertainty_ms,
              up_book.source_ts_kind,down_book.source_ts_kind,binance.source_ts_kind,
-             up_book.midpoint_missing_reason,down_book.midpoint_missing_reason))
+             up_book.midpoint_missing_reason,down_book.midpoint_missing_reason,observed_ts,features.baseline_ts))
         self.conn.commit()
         return (time.perf_counter() - started) * 1000.0
 
@@ -892,6 +908,9 @@ class Collector:
             )
         elif config.binance_profile == "primary":
             self.binance_feed = BinanceDepthFeed(config)
+        elif config.binance_profile == "failover":
+            from shadow_runtime import FailoverBinanceDepthFeed
+            self.binance_feed = FailoverBinanceDepthFeed(config)
         else:
             raise ValueError("unknown Binance profile")
         self.up_history: Deque[Tuple[float, float]] = deque()
@@ -919,6 +938,11 @@ class Collector:
             )
         for gap in self.binance_feed.drain_gaps():
             self.store.record_ws_gap(run_id, gap)
+        drain = getattr(self.binance_feed, "drain_transport_events", None)
+        if callable(drain):
+            for event in drain():
+                self.store.record_error(run_id, event.ts, "binance_transport", event.reason,
+                                        endpoint=event.endpoint, classification=event.event)
 
     def _refresh_market(self, now_ts: float) -> Tuple[MarketPair, float]:
         if self.market is None or now_ts >= self.market.close_ts or now_ts - self.last_market_refresh >= self.config.market_refresh_seconds:
@@ -972,8 +996,9 @@ class Collector:
                     return False
             parallel_fetch_wall_ms = (time.perf_counter() - parallel_started) * 1000.0
             lookup_started = time.perf_counter()
+            observed_ts = utc_now_ts()
             try:
-                binance = self.binance_feed.latest_quote()
+                binance = self.binance_feed.latest_quote(observed_ts)
             except QuoteUnavailable as exc:
                 self.store.record_error(
                     run_id, poll_ts, "binance_ws_quote", str(exc), endpoint=self.binance_feed.ws_url,
@@ -983,9 +1008,13 @@ class Collector:
                 return False
             binance_quote_lookup_ms = (time.perf_counter() - lookup_started) * 1000.0
             up_book, down_book = results["up"], results["down"]
-            features = calculate_features(poll_ts, up_book.midpoint, down_book.midpoint, binance.midpoint,
+            features = calculate_features(observed_ts, up_book.midpoint, down_book.midpoint, binance.midpoint,
                                           self.up_history, self.down_history, self.binance_history, up_book, down_book)
-            sqlite_write_ms = self.store.record_snapshot(run_id, poll_ts, market, up_book, down_book, binance, features)
+            complete = self._complete_feature_inputs(observed_ts, up_book, down_book, binance)
+            if not complete:
+                features = FeatureRow(None, None, None, up_book.imbalance(3), down_book.imbalance(3))
+            sqlite_write_ms = self.store.record_snapshot(run_id, poll_ts, market, up_book, down_book, binance, features,
+                                                         observed_ts=observed_ts)
             cycle_ms = (time.perf_counter() - cycle_started) * 1000.0
             self.store.record_cycle(run_id, poll_ts, market.market_id, {
                 "market_fetch_ms": market_fetch_ms, "polymarket_up_fetch_ms": up_book.request_ms or 0.0,
@@ -994,9 +1023,11 @@ class Collector:
                 "parallel_fetch_wall_ms": parallel_fetch_wall_ms, "sqlite_write_ms": sqlite_write_ms,
                 "other_ms": max(0.0, cycle_ms - market_fetch_ms - parallel_fetch_wall_ms - sqlite_write_ms
                                 - binance_quote_lookup_ms), "cycle_ms": cycle_ms})
-            if up_book.midpoint is not None: self.up_history.append((poll_ts, up_book.midpoint))
-            if down_book.midpoint is not None: self.down_history.append((poll_ts, down_book.midpoint))
-            self.binance_history.append((poll_ts, binance.midpoint)); self._trim_history(poll_ts)
+            if complete:
+                self.up_history.append((observed_ts, up_book.midpoint))
+                self.down_history.append((observed_ts, down_book.midpoint))
+                self.binance_history.append((observed_ts, binance.midpoint))
+            self._trim_history(observed_ts)
             self._drain_feed_events(run_id)
             return True
         except Exception as exc:  # noqa: BLE001 - collector records and survives unexpected faults
@@ -1008,6 +1039,25 @@ class Collector:
         for history in (self.up_history, self.down_history, self.binance_history):
             while history and history[0][0] < cutoff:
                 history.popleft()
+
+    @staticmethod
+    def _complete_feature_inputs(observed_ts: float, up: Book, down: Book, quote: BinanceQuote) -> bool:
+        uncertainty = quote.clock_uncertainty_ms
+        if not math.isfinite(uncertainty) or uncertainty < 0 or not math.isfinite(quote.midpoint) or quote.midpoint <= 0:
+            return False
+        for book in (up, down):
+            if (book.best_bid is None or book.best_ask is None or not 0 < book.best_bid < book.best_ask <= 1
+                    or any(not math.isfinite(level.price) or not math.isfinite(level.size) or
+                           not 0 < level.price <= 1 or level.size <= 0 for level in (*book.bids, *book.asks))):
+                return False
+            if book.source_ts is None or not book.source_ts_kind.startswith("payload_"):
+                return False
+            # Binance supplies a UTC-reference estimate, not a measured bound
+            # on Polymarket's own server clock. Reports retain that assumption.
+            age = (observed_ts - book.source_ts) * 1000 - quote.clock_offset_ms
+            if not math.isfinite(age) or not 0 <= age or age + uncertainty > FRESHNESS_THRESHOLD_MS:
+                return False
+        return True
 
 
 def _distribution(values: Sequence[Optional[float]]) -> Dict[str, Optional[float]]:
@@ -1030,6 +1080,25 @@ def _source_report(rows: Sequence[sqlite3.Row], source: str) -> Dict[str, Any]:
             "payload_timestamp_within_750ms_pct": None if not payload_rows else round(100 * len(fresh) / len(payload_rows), 3),
             "freshness_validatable": bool(payload_rows),
             "denominator": "saved_payload_timestamp_rows_not_all_collection_attempts"}
+
+
+def _decision_source_report(rows, source):
+    ages, upper_ages = [], []
+    fresh = 0
+    for row in rows:
+        required = ("observed_ts", f"{source}_source_ts", "system_clock_offset_ms", "system_clock_uncertainty_ms")
+        if any(key not in row.keys() or row[key] is None or not math.isfinite(row[key]) for key in required):
+            continue
+        if not str(row[f"{source}_source_ts_kind"]).startswith("payload_") or row["system_clock_uncertainty_ms"] < 0:
+            continue
+        age = (row["observed_ts"] - row[f"{source}_source_ts"]) * 1000 - row["system_clock_offset_ms"]
+        upper = age + row["system_clock_uncertainty_ms"]
+        ages.append(age); upper_ages.append(upper)
+        fresh += int(0 <= age and upper <= FRESHNESS_THRESHOLD_MS)
+    return {"rows": len(rows), "evidence_rows": len(ages), "fresh_rows": fresh,
+            "fresh_all_saved_rows_pct": 100 * fresh / len(rows) if rows else None,
+            "age_ms": _distribution(ages), "age_upper_bound_ms": _distribution(upper_ages),
+            "clock_assumption": "local-minus-Binance offset; Polymarket-to-Binance clock skew is not measured" if source != "binance" else "measured Binance clock bound"}
 
 
 def _midpoint_missing_analysis(snapshots: Sequence[sqlite3.Row], error_times: Sequence[float]) -> Dict[str, Any]:
@@ -1083,6 +1152,8 @@ def telemetry_report(conn: sqlite3.Connection, run_id: Optional[str] = None) -> 
     ws_gaps = conn.execute(f"SELECT * FROM telemetry_ws_gaps {where} ORDER BY disconnected_ts", params).fetchall()
     errors = conn.execute(f"SELECT stage,endpoint,classification,COUNT(*) AS count FROM telemetry_errors {where} "
                           "GROUP BY stage,endpoint,classification ORDER BY count DESC,stage", params).fetchall()
+    has_attempts = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='telemetry_attempts'").fetchone()
+    attempts = conn.execute(f"SELECT successful,duration_ms FROM telemetry_attempts {where}", params).fetchall() if has_attempts else []
     error_events = conn.execute(f"SELECT ts FROM telemetry_errors {where} ORDER BY ts", params).fetchall()
     midpoint = conn.execute(
         f"SELECT side,reason,COUNT(*) AS count FROM (SELECT 'up' AS side,up_midpoint_missing_reason AS reason FROM telemetry_snapshots {where} "
@@ -1100,6 +1171,13 @@ def telemetry_report(conn: sqlite3.Connection, run_id: Optional[str] = None) -> 
             "No millisecond price event timestamp is present; HTTP Date is diagnostic only and cannot validate 750ms freshness."
         )
     return {"run_id": run_id, "daily": [dict(row) for row in daily],
+            "attempts": {"count": len(attempts), "successful": sum(row["successful"] for row in attempts),
+                         "successful_fraction": sum(row["successful"] for row in attempts) / len(attempts) if attempts else None,
+                         "full_attempt_timing_ms": _distribution([row["duration_ms"] for row in attempts]),
+                         "failed_attempt_timing_ms": _distribution([row["duration_ms"] for row in attempts if not row["successful"]])},
+            "decision_time_freshness": {source: _decision_source_report(snapshots, source) for source in ("up", "down", "binance")},
+            "feature_baseline": {"evidence_rows": sum("feature_baseline_ts" in row.keys() and row["feature_baseline_ts"] is not None for row in snapshots),
+                                 "missing_evidence_is_not_a_zero_shock": True},
             "cycle_timing_ms": {field: _distribution([row[field] for row in cycles]) for field in timing_fields},
             "snapshot_gaps_seconds": {**_distribution(gaps), "over_10s": sum(gap > 10 for gap in gaps)},
             "source_freshness": {"threshold_ms": FRESHNESS_THRESHOLD_MS,
@@ -1113,6 +1191,8 @@ def telemetry_report(conn: sqlite3.Connection, run_id: Optional[str] = None) -> 
             "midpoint_missing": [dict(row) for row in midpoint], "errors": [dict(row) for row in errors],
             "midpoint_missing_analysis": _midpoint_missing_analysis(snapshots, [row["ts"] for row in error_events]),
             "notes": ["Rows and raw shocks are not independent observations; episode-level analysis remains required.",
+                      "cycle_timing_ms covers saved snapshots; attempts.full_attempt_timing_ms includes failed cycles and bookkeeping.",
+                      "Legacy receive-time lag is descriptive. Decision-time freshness includes clock uncertainty; Polymarket clock skew remains an explicit assumption.",
                       "No outcome, resolution, PnL, wallet, or order data is stored."]}
 
 
@@ -1120,43 +1200,104 @@ def run_command(args: argparse.Namespace) -> int:
     config = TelemetryConfig(args.db, args.poll_seconds, args.duration_days, args.timeout_seconds,
                              max_fetch_attempts=args.max_fetch_attempts, retry_backoff_seconds=args.retry_backoff_seconds,
                              duration_seconds=args.duration_seconds, binance_profile=args.binance_profile)
-    store = TelemetryStore(Path(config.db_path)); started_ts = utc_now_ts()
-    active = store.active_run(config, started_ts) if args.resume_latest else None
-    if active is None:
-        run_id = store.start_run(config, started_ts)
-        deadline = started_ts + config.effective_duration_seconds
-        mode = "started"
-    else:
-        run_id, deadline = active
-        previous_ts = store.conn.execute(
-            "SELECT MAX(ts) FROM telemetry_snapshots WHERE run_id = ?", (run_id,)
-        ).fetchone()[0]
-        gap_seconds = None if previous_ts is None else max(0.0, started_ts - float(previous_ts))
-        store.record_error(
-            run_id, started_ts, "collector", f"process resumed; prior snapshot gap={gap_seconds}",
-            classification="collector_resume",
-        )
-        mode = "resumed"
-    collector = Collector(config, store)
-    print(f"telemetry {mode} run_id={run_id} scheduled_end={datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat()}", flush=True)
+    path = Path(config.db_path)
+    with exclusive_run(path.with_suffix(".lock")):
+        return _run_locked(config, resume_latest=args.resume_latest)
+
+
+def plan_run(config: TelemetryConfig, *, resume_latest: bool, now_ts: float) -> dict:
+    """Inspect before opening a writable store or migrating historical data."""
+    path = Path(config.db_path)
+    saved = None
+    if path.exists():
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            saved = conn.execute("SELECT run_id,planned_end_ts,config_json FROM telemetry_runs ORDER BY started_ts DESC LIMIT 1").fetchone()
+    if resume_latest:
+        if saved is None:
+            raise RuntimeError("no existing run to resume; an explicit new run is required")
+        if now_ts >= saved[1]:
+            return {"action": "expired", "run_id": saved[0], "deadline": saved[1]}
+        if json.loads(saved[2]) != asdict(config):
+            raise RuntimeError("refusing to resume a run with different measurement configuration")
+        status_path = path.with_suffix(".status.json")
+        if not status_path.exists():
+            raise RuntimeError("missing source fingerprint; cannot certify same-code resume")
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        if status.get("run_id") != saved[0] or status.get("source_sha256") != source_fingerprint():
+            raise RuntimeError("refusing to resume with changed source code or mismatched run identity")
+        return {"action": "resume", "run_id": saved[0], "deadline": saved[1]}
+    if saved is not None:
+        raise RuntimeError("database already contains a run; resume it explicitly or choose a new database")
+    return {"action": "start", "deadline": now_ts + config.effective_duration_seconds}
+
+
+def _run_locked(config: TelemetryConfig, *, resume_latest: bool) -> int:
+    started_ts = utc_now_ts()
+    plan = plan_run(config, resume_latest=resume_latest, now_ts=started_ts)
+    if plan["action"] == "expired":
+        print(json.dumps({"status": "expired_no_restart", **plan}), flush=True)
+        return 0
+    path = Path(config.db_path)
+    journal = RunJournal(path.with_suffix(".status.json"), kind="telemetry_only",
+                         measurement_version=config.measurement_version, binance_profile=config.binance_profile)
+    store, collector = None, None
+    deadline = plan["deadline"]
     try:
+        store = TelemetryStore(path)
+        run_id = store.start_run(config, started_ts) if plan["action"] == "start" else plan["run_id"]
+        journal.update("starting", run_id=run_id, planned_end_ts=deadline)
+        if plan["action"] == "resume":
+            previous_ts = store.conn.execute("SELECT MAX(ts) FROM telemetry_snapshots WHERE run_id=?", (run_id,)).fetchone()[0]
+            gap = None if previous_ts is None else max(0.0, started_ts - previous_ts)
+            store.record_error(run_id, started_ts, "collector", f"resume; snapshot gap={gap}", classification="collector_resume")
+        collector = Collector(config, store)
+        print(f"telemetry {plan['action']} run_id={run_id} scheduled_end={datetime.fromtimestamp(deadline, tz=timezone.utc).isoformat()}", flush=True)
         collector.start()
+        attempts = successes = 0
+        last_valid_ts = None
+        last_journal = float("-inf")
         while utc_now_ts() < deadline:
-            cycle_started = time.perf_counter(); collector.tick(run_id)
-            time.sleep(max(0.0, config.poll_seconds - (time.perf_counter() - cycle_started)))
-    except KeyboardInterrupt:
-        print("telemetry interrupted by user", flush=True)
+            cycle_started = time.perf_counter()
+            ok = collector.tick(run_id)
+            attempts += 1
+            successes += int(ok)
+            if ok:
+                last_valid_ts = utc_now_ts()
+            if time.perf_counter() - last_journal >= 5:
+                journal.update("running", process_attempts=attempts, process_successes=successes,
+                               last_successful_snapshot_ts=last_valid_ts)
+                last_journal = time.perf_counter()
+            time.sleep(min(max(0.0, deadline - utc_now_ts()),
+                           max(0.0, config.poll_seconds - (time.perf_counter() - cycle_started))))
+        journal.update("complete", process_attempts=attempts, process_successes=successes,
+                       last_successful_snapshot_ts=last_valid_ts)
+        return 0
+    except BaseException as exc:
+        journal.update("interrupted" if isinstance(exc, KeyboardInterrupt) else "failed",
+                       error_type=type(exc).__name__, error=str(exc))
+        if isinstance(exc, KeyboardInterrupt):
+            return 130
+        raise
     finally:
-        collector.close()
-        collector._drain_feed_events(run_id)
-        store.close()
-    return 0
+        try:
+            if collector is not None:
+                collector.close()
+                collector._drain_feed_events(run_id)
+        finally:
+            if store is not None:
+                store.close()
 
 
 def report_command(args: argparse.Namespace) -> int:
-    conn = sqlite3.connect(args.db)
+    conn = sqlite3.connect(Path(args.db).resolve().as_uri() + "?mode=ro", uri=True)
     try:
-        print(json.dumps(telemetry_report(conn, args.run_id), ensure_ascii=False, indent=2))
+        conn.execute("BEGIN")
+        result = telemetry_report(conn, args.run_id)
+        if getattr(args, "output", None):
+            atomic_json(Path(args.output), result)
+            print(json.dumps({"report": str(args.output), "run_id": args.run_id}))
+        else:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
     finally:
         conn.close()
     return 0
@@ -1170,19 +1311,34 @@ def main() -> int:
     run_parser.add_argument("--poll-seconds", type=float, default=1.0); run_parser.add_argument("--timeout-seconds", type=float, default=5.0)
     run_parser.add_argument("--max-fetch-attempts", type=int, default=3); run_parser.add_argument("--retry-backoff-seconds", type=float, default=0.25)
     run_parser.add_argument("--duration-seconds", type=float, help="short, explicit duration for an acceptance run")
-    run_parser.add_argument("--binance-profile", choices=("primary", "market-data"), default="primary")
-    run_parser.add_argument("--resume-latest", action="store_true", help="resume the latest active run only when its saved configuration matches")
+    run_parser.add_argument("--binance-profile", choices=("primary", "market-data", "failover"), default="primary")
+    run_parser.add_argument("--resume-latest", action="store_true", help="resume only the same existing run and code; expired runs never restart")
     run_parser.set_defaults(handler=run_command)
     report_parser = subparsers.add_parser("report"); report_parser.add_argument("--db", default="data/telemetry.sqlite3")
     report_parser.add_argument("--run-id"); report_parser.set_defaults(handler=report_command)
+    report_parser.add_argument("--output", type=Path)
+    status_parser = subparsers.add_parser("status")
+    status_parser.add_argument("--db", required=True, type=Path)
+    def show_status(args):
+        result = read_status(args.db.with_suffix(".status.json"))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 2 if result["status"] in {"stale_unknown", "failed", "interrupted"} else 0
+    status_parser.set_defaults(handler=show_status)
     args = parser.parse_args()
     if getattr(args, "duration_days", 1) < 1: parser.error("--duration-days must be positive")
     if getattr(args, "poll_seconds", 1.0) <= 0: parser.error("--poll-seconds must be positive")
     if getattr(args, "max_fetch_attempts", 1) < 1: parser.error("--max-fetch-attempts must be positive")
     if getattr(args, "retry_backoff_seconds", 0.0) < 0: parser.error("--retry-backoff-seconds must be non-negative")
     if getattr(args, "duration_seconds", None) is not None and args.duration_seconds <= 0: parser.error("--duration-seconds must be positive")
+    for name in ("poll_seconds", "timeout_seconds", "retry_backoff_seconds", "duration_seconds"):
+        value = getattr(args, name, None)
+        if value is not None and not math.isfinite(value): parser.error(f"--{name.replace('_', '-')} must be finite")
+    if getattr(args, "timeout_seconds", 1) <= 0: parser.error("--timeout-seconds must be positive")
     return args.handler(args)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # The failover adapter imports telemetry. Use one canonical set of classes
+    # so QuoteUnavailable and configuration types are identical in CLI runs.
+    from telemetry import main as canonical_main
+    raise SystemExit(canonical_main())

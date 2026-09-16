@@ -1,0 +1,409 @@
+{
+  "mode": "disposable_end_to_end_telemetry_acceptance_no_cohort_approval",
+  "passed": true,
+  "criteria": {
+    "completed_matching_run_identity": true,
+    "tested_measurement_code_matches_current": true,
+    "completed_at_least_900_seconds": true,
+    "complete_attempt_history": true,
+    "at_least_95pct_successful_attempts": true,
+    "at_least_95pct_scheduled_slots": true,
+    "maximum_300_seconds_without_snapshot": true,
+    "cadence_p50_within_10pct_of_target": true,
+    "midpoint_missing_at_most_15pct": true,
+    "up_decision_time_fresh_with_clock_bound": true,
+    "down_decision_time_fresh_with_clock_bound": true,
+    "binance_decision_time_fresh_with_clock_bound": true
+  },
+  "run_id": "6126546b-2bfe-4735-aa53-016f06b7c355",
+  "measurement_source_sha256": {
+    "telemetry.py": "5e8a65c66abe4276d126eb7e3576001c5ad59cf2e7287e9b854ad45ed997e093",
+    "shadow_runtime.py": "44a5106b03f429aa6e9f032fe2f7d52ef4add0d6a2b91426364491b22ff7f476",
+    "clock_sync.py": "c80bf94fbef86609a30acda551bbfbfaafe0533857399ee3f086e1ebfb629096"
+  },
+  "run_config": {
+    "db_path": "data/telemetry_review_20260916.sqlite3",
+    "poll_seconds": 1.0,
+    "duration_days": 14,
+    "timeout_seconds": 5.0,
+    "market_refresh_seconds": 30.0,
+    "max_fetch_attempts": 3,
+    "retry_backoff_seconds": 0.25,
+    "duration_seconds": 900.0,
+    "ws_freshness_ms": 750.0,
+    "ws_receive_timeout_seconds": 5.0,
+    "ws_max_reconnect_attempts": 5,
+    "ws_max_backoff_seconds": 30.0,
+    "clock_sync_samples": 3,
+    "clock_resync_seconds": 300.0,
+    "binance_profile": "failover",
+    "measurement_version": "telemetry-observation-v2"
+  },
+  "quality": {
+    "mode": "final_telemetry_quality_no_edge_claim",
+    "run_id": "6126546b-2bfe-4735-aa53-016f06b7c355",
+    "rows": 879,
+    "elapsed_days": 0.010340181743657147,
+    "evaluated_ts": 1789538639.1658695,
+    "coverage_end_ts": 1789512430.6269336,
+    "tail_gap_seconds": 0.5171425342559814,
+    "max_coverage_gap_seconds": 6.0911548137664795,
+    "attempts": {
+      "count": 888,
+      "successful_fraction": 0.9898648648648649,
+      "history_complete": true,
+      "successful_scheduled_slot_fraction": 0.9766666666666667,
+      "expected_slots": 900
+    },
+    "negative_lag_counts": {
+      "up": 0,
+      "down": 0,
+      "binance": 0
+    },
+    "criteria": {
+      "planned_interval_complete": true,
+      "planned_at_least_14_calendar_days": false,
+      "minimum_13_9_observed_days": false,
+      "unique_snapshot_grain": true,
+      "maximum_gap_at_most_300_seconds": true,
+      "complete_attempt_history": true,
+      "successful_attempts_at_least_95pct": true,
+      "successful_scheduled_slots_at_least_95pct": true,
+      "polymarket_up_fresh_at_least_95pct": true,
+      "polymarket_down_fresh_at_least_95pct": true,
+      "binance_fresh_at_least_99pct_of_saved_rows": true,
+      "midpoint_missing_at_most_15pct": true,
+      "negative_lag_rate_at_most_0_5pct": true,
+      "up_decision_time_fresh_with_clock_bound": true,
+      "down_decision_time_fresh_with_clock_bound": true,
+      "binance_decision_time_fresh_with_clock_bound": true
+    },
+    "passed": false,
+    "telemetry_report": {
+      "run_id": "6126546b-2bfe-4735-aa53-016f06b7c355",
+      "daily": [
+        {
+          "day_utc": "2026-09-15",
+          "snapshots": 879,
+          "episodes": 1,
+          "shock_2c": 410,
+          "shock_3c": 295,
+          "shock_4c": 185,
+          "binance_neutral_4bps": 615
+        }
+      ],
+      "attempts": {
+        "count": 888,
+        "successful": 879,
+        "successful_fraction": 0.9898648648648649,
+        "full_attempt_timing_ms": {
+          "n": 888,
+          "p50": 258.171,
+          "p95": 452.912,
+          "max": 4508.367
+        },
+        "failed_attempt_timing_ms": {
+          "n": 9,
+          "p50": 272.472,
+          "p95": 1780.818,
+          "max": 1780.818
+        }
+      },
+      "decision_time_freshness": {
+        "up": {
+          "rows": 879,
+          "evidence_rows": 879,
+          "fresh_rows": 878,
+          "fresh_all_saved_rows_pct": 99.88623435722411,
+          "age_ms": {
+            "n": 879,
+            "p50": 103.614,
+            "p95": 162.537,
+            "max": 609.734
+          },
+          "age_upper_bound_ms": {
+            "n": 879,
+            "p50": 252.04,
+            "p95": 312.415,
+            "max": 759.875
+          },
+          "clock_assumption": "local-minus-Binance offset; Polymarket-to-Binance clock skew is not measured"
+        },
+        "down": {
+          "rows": 879,
+          "evidence_rows": 879,
+          "fresh_rows": 878,
+          "fresh_all_saved_rows_pct": 99.88623435722411,
+          "age_ms": {
+            "n": 879,
+            "p50": 104.487,
+            "p95": 153.096,
+            "max": 666.647
+          },
+          "age_upper_bound_ms": {
+            "n": 879,
+            "p50": 252.878,
+            "p95": 302.762,
+            "max": 816.313
+          },
+          "clock_assumption": "local-minus-Binance offset; Polymarket-to-Binance clock skew is not measured"
+        },
+        "binance": {
+          "rows": 879,
+          "evidence_rows": 879,
+          "fresh_rows": 879,
+          "fresh_all_saved_rows_pct": 100.0,
+          "age_ms": {
+            "n": 879,
+            "p50": 207.437,
+            "p95": 258.952,
+            "max": 302.763
+          },
+          "age_upper_bound_ms": {
+            "n": 879,
+            "p50": 354.696,
+            "p95": 406.629,
+            "max": 452.429
+          },
+          "clock_assumption": "measured Binance clock bound"
+        }
+      },
+      "feature_baseline": {
+        "evidence_rows": 654,
+        "missing_evidence_is_not_a_zero_shock": true
+      },
+      "cycle_timing_ms": {
+        "market_fetch_ms": {
+          "n": 879,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 264.433
+        },
+        "polymarket_up_fetch_ms": {
+          "n": 879,
+          "p50": 213.536,
+          "p95": 256.986,
+          "max": 2553.359
+        },
+        "polymarket_down_fetch_ms": {
+          "n": 879,
+          "p50": 212.874,
+          "p95": 259.229,
+          "max": 2537.745
+        },
+        "binance_fetch_ms": {
+          "n": 879,
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "binance_quote_lookup_ms": {
+          "n": 879,
+          "p50": 0.008,
+          "p95": 0.029,
+          "max": 0.279
+        },
+        "parallel_fetch_wall_ms": {
+          "n": 879,
+          "p50": 221.303,
+          "p95": 312.642,
+          "max": 2553.902
+        },
+        "sqlite_write_ms": {
+          "n": 879,
+          "p50": 27.795,
+          "p95": 39.833,
+          "max": 3182.062
+        },
+        "other_ms": {
+          "n": 879,
+          "p50": 0.344,
+          "p95": 1.411,
+          "max": 4.26
+        },
+        "cycle_ms": {
+          "n": 879,
+          "p50": 251.038,
+          "p95": 435.361,
+          "max": 3589.46
+        }
+      },
+      "snapshot_gaps_seconds": {
+        "n": 878,
+        "p50": 1.0,
+        "p95": 1.001,
+        "max": 4.725,
+        "over_10s": 0
+      },
+      "source_freshness": {
+        "threshold_ms": 750.0,
+        "clock_sync": {
+          "offset_ms": {
+            "n": 879,
+            "p50": 486.283,
+            "p95": 490.864,
+            "max": 490.864
+          },
+          "uncertainty_ms": {
+            "n": 879,
+            "p50": 149.666,
+            "p95": 150.141,
+            "max": 150.141
+          }
+        },
+        "polymarket_up": {
+          "rows": 879,
+          "source_timestamp_rows": 879,
+          "timestamp_kinds": {
+            "payload_timestamp_ms": 879
+          },
+          "lag_ms": {
+            "n": 879,
+            "p50": 97.924,
+            "p95": 131.379,
+            "max": 587.073
+          },
+          "payload_timestamp_rows": 879,
+          "payload_timestamp_within_750ms": 879,
+          "payload_timestamp_within_750ms_pct": 100.0,
+          "freshness_validatable": true,
+          "denominator": "saved_payload_timestamp_rows_not_all_collection_attempts"
+        },
+        "polymarket_down": {
+          "rows": 879,
+          "source_timestamp_rows": 879,
+          "timestamp_kinds": {
+            "payload_timestamp_ms": 879
+          },
+          "lag_ms": {
+            "n": 879,
+            "p50": 97.548,
+            "p95": 129.061,
+            "max": 582.094
+          },
+          "payload_timestamp_rows": 879,
+          "payload_timestamp_within_750ms": 879,
+          "payload_timestamp_within_750ms_pct": 100.0,
+          "freshness_validatable": true,
+          "denominator": "saved_payload_timestamp_rows_not_all_collection_attempts"
+        },
+        "binance": {
+          "rows": 879,
+          "source_timestamp_rows": 879,
+          "timestamp_kinds": {
+            "payload_E_ms": 879
+          },
+          "lag_ms": {
+            "n": 879,
+            "p50": 152.859,
+            "p95": 199.524,
+            "max": 226.367
+          },
+          "payload_timestamp_rows": 879,
+          "payload_timestamp_within_750ms": 879,
+          "payload_timestamp_within_750ms_pct": 100.0,
+          "freshness_validatable": true,
+          "denominator": "saved_payload_timestamp_rows_not_all_collection_attempts",
+          "source": "Binance diff-depth WebSocket event time E"
+        }
+      },
+      "websocket_gaps": {
+        "count": 1,
+        "duration_ms": {
+          "n": 1,
+          "p50": 6094.455,
+          "p95": 6094.455,
+          "max": 6094.455
+        },
+        "by_reason": {
+          "ws_initial_connect": 1
+        }
+      },
+      "midpoint_missing": [
+        {
+          "side": "down",
+          "reason": "no_bid",
+          "count": 56
+        },
+        {
+          "side": "up",
+          "reason": "no_ask",
+          "count": 56
+        }
+      ],
+      "errors": [
+        {
+          "stage": "binance_ws_quote",
+          "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+          "classification": "ws_no_quote",
+          "count": 5
+        },
+        {
+          "stage": "binance_ws_quote",
+          "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+          "classification": "ws_stale_quote",
+          "count": 3
+        },
+        {
+          "stage": "binance_transport",
+          "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+          "classification": "endpoint_switch",
+          "count": 1
+        },
+        {
+          "stage": "binance_transport",
+          "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+          "classification": "disconnect",
+          "count": 1
+        },
+        {
+          "stage": "binance_transport",
+          "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+          "classification": "endpoint_quarantined",
+          "count": 1
+        },
+        {
+          "stage": "binance_ws",
+          "endpoint": "wss://data-stream.binance.vision/ws/btcusdt@depth@100ms",
+          "classification": "ws_disconnect",
+          "count": 1
+        },
+        {
+          "stage": "binance_ws_quote",
+          "endpoint": "wss://stream.binance.com:9443/ws/btcusdt@depth@100ms",
+          "classification": "ws_no_quote",
+          "count": 1
+        }
+      ],
+      "midpoint_missing_analysis": {
+        "rows_with_any_missing": 56,
+        "rows_with_any_missing_pct": 6.371,
+        "rows_with_both_missing": 56,
+        "cluster_count": 2,
+        "cluster_duration_seconds": {
+          "n": 2,
+          "p50": 27.006,
+          "p95": 51.012,
+          "max": 51.012
+        },
+        "cluster_size_rows": {
+          "n": 2,
+          "p50": 28.0,
+          "p95": 52.0,
+          "max": 52.0
+        },
+        "rows_within_10s_after_collector_error": 4,
+        "rows_within_10s_after_collector_error_pct": 7.143
+      },
+      "notes": [
+        "Rows and raw shocks are not independent observations; episode-level analysis remains required.",
+        "cycle_timing_ms covers saved snapshots; attempts.full_attempt_timing_ms includes failed cycles and bookkeeping.",
+        "Legacy receive-time lag is descriptive. Decision-time freshness includes clock uncertainty; Polymarket clock skew remains an explicit assumption.",
+        "No outcome, resolution, PnL, wallet, or order data is stored."
+      ]
+    },
+    "offline_audit": null,
+    "offline_audit_consistency": "separate_read_not_used_in_quality_gates"
+  },
+  "limitation": "Short engineering test; does not replace 14 calendar days of calibration or validate Polymarket server clock skew."
+}
